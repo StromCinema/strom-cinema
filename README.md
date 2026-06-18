@@ -1,5 +1,8 @@
-<img width="2242" height="1240" alt="Screenshot 2026-06-18 223712" src="https://github.com/user-attachments/assets/2e3d9344-75f8-4f80-b9f0-cc3ca35506d3" />
-> **First public release**
+<img width="1815" height="1127" alt="Screenshot 2026-06-19 012229" src="https://github.com/user-attachments/assets/3ebabfe5-7e7d-4c0d-88bb-423c7c402648" />
+
+
+
+**First public release**
 Bugs are expected. If you find something broken or have ideas for improvement, please open an issue — all feedback is appreciated and helps Strøm Cinema better.
 
 
@@ -41,6 +44,7 @@ Tick Remember host connection so the app auto-connects on next launch. Hit Conne
 
 If it fails: check the PC firewall allows inbound traffic on port 5000, and confirm both devices are on the same network.
 
+<img width="2242" height="1240" alt="Screenshot 2026-06-18 223712" src="https://github.com/user-attachments/assets/2e3d9344-75f8-4f80-b9f0-cc3ca35506d3" />
 <img width="1581" height="1245" alt="Screenshot 2026-06-18 223930" src="https://github.com/user-attachments/assets/f45840ef-16cc-4e35-9a42-224bb46015d2" />
 <img width="2366" height="1232" alt="Screenshot 2026-06-18 223843" src="https://github.com/user-attachments/assets/4c74eec4-2c7a-4f72-b89f-ce82b5847c91" />
 <img width="2329" height="1237" alt="Screenshot 2026-06-18 223827" src="https://github.com/user-attachments/assets/872dead5-2933-4a94-a996-d95ab6d081b9" />
