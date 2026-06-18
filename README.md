@@ -47,4 +47,5 @@ If it fails: check the PC firewall allows inbound traffic on port 5000, and conf
 <img width="1939" height="1242" alt="Screenshot 2026-06-18 223808" src="https://github.com/user-attachments/assets/018bf927-6a94-4753-b1be-38f19004e0c4" />
 <img width="2400" height="1248" alt="Screenshot 2026-06-18 223753" src="https://github.com/user-attachments/assets/e689a102-7ac8-402d-9364-de1c68072870" />
 <img width="2243" height="1253" alt="Screenshot 2026-06-18 223734" src="https://github.com/user-attachments/assets/e441d0da-7b53-422e-8cc0-5d4797450c46" />
-![Uploading Screenshot 2026-06-18 223712.jpg…]()
+<img width="2242" height="1240" alt="Screenshot 2026-06-18 223712" src="https://github.com/user-attachments/assets/9ca3302c-68ec-433d-bebe-c3aa1b6e361f" />
+
