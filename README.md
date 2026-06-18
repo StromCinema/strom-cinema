@@ -1,3 +1,4 @@
+<img width="2242" height="1240" alt="Screenshot 2026-06-18 223712" src="https://github.com/user-attachments/assets/2e3d9344-75f8-4f80-b9f0-cc3ca35506d3" />
 > **First public release**
 Bugs are expected. If you find something broken or have ideas for improvement, please [open an issue](https://github.com/StromCinema/issues) — all feedback is appreciated and helps Strøm Cinema better.
 
@@ -39,3 +40,11 @@ Install the APK on your Android TV and launch Strøm Cinema. At the connection g
 Tick Remember host connection so the app auto-connects on next launch. Hit Connect Server — you should reach the main library view within a few seconds.
 
 If it fails: check the PC firewall allows inbound traffic on port 5000, and confirm both devices are on the same network.
+
+<img width="1581" height="1245" alt="Screenshot 2026-06-18 223930" src="https://github.com/user-attachments/assets/f45840ef-16cc-4e35-9a42-224bb46015d2" />
+<img width="2366" height="1232" alt="Screenshot 2026-06-18 223843" src="https://github.com/user-attachments/assets/4c74eec4-2c7a-4f72-b89f-ce82b5847c91" />
+<img width="2329" height="1237" alt="Screenshot 2026-06-18 223827" src="https://github.com/user-attachments/assets/872dead5-2933-4a94-a996-d95ab6d081b9" />
+<img width="1939" height="1242" alt="Screenshot 2026-06-18 223808" src="https://github.com/user-attachments/assets/018bf927-6a94-4753-b1be-38f19004e0c4" />
+<img width="2400" height="1248" alt="Screenshot 2026-06-18 223753" src="https://github.com/user-attachments/assets/e689a102-7ac8-402d-9364-de1c68072870" />
+<img width="2243" height="1253" alt="Screenshot 2026-06-18 223734" src="https://github.com/user-attachments/assets/e441d0da-7b53-422e-8cc0-5d4797450c46" />
+![Uploading Screenshot 2026-06-18 223712.jpg…]()
