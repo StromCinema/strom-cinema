@@ -1,0 +1,271 @@
+import { Movie } from './types';
+
+export const STATIC_MOVIES: Movie[] = [
+  {
+    id: "157336",
+    title: "Interstellar",
+    originalTitle: "Interstellar",
+    backdropPath: "https://images.unsplash.com/photo-1506318137071-a8e063b4bec0?auto=format&fit=crop&w=1600&q=80", // Elegant dark stars
+    posterPath: "https://image.tmdb.org/t/p/w500/gEU2Qv6vK67v2corebe7YOK7v3C.jpg",
+    overview: "The adventures of a group of explorers who make use of a newly discovered wormhole to surpass the limitations on human space travel and conquer the vast distances involved in an interstellar voyage.",
+    rating: 8.4,
+    releaseDate: "2014-11-05",
+    runtime: 169,
+    genres: ["Science Fiction", "Drama", "Adventure"],
+    tagline: "Mankind was born on Earth. It was never meant to die here.",
+    director: "Christopher Nolan",
+    actors: ["Matthew McConaughey", "Anne Hathaway", "Jessica Chastain", "Michael Caine"],
+    trailerUrl: "https://www.youtube.com/watch?v=zSWdZVtXT7E"
+  },
+  {
+    id: "27205",
+    title: "Inception",
+    originalTitle: "Inception",
+    backdropPath: "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?auto=format&fit=crop&w=1600&q=80", // Abstract surreal geometry
+    posterPath: "https://image.tmdb.org/t/p/w500/o0ic06k2Vp6vV6O6G7A3asj6v6R.jpg",
+    overview: "Cobb, a skilled thief who is the absolute best in the dangerous art of extraction, steals valuable secrets from deep within the subconscious during the dream state, when the mind is at its most vulnerable. Cobb's rare ability has made him a coveted player in this treacherous new world of corporate espionage.",
+    rating: 8.3,
+    releaseDate: "2010-07-15",
+    runtime: 148,
+    genres: ["Action", "Science Fiction", "Adventure"],
+    tagline: "Your mind is the scene of the crime.",
+    director: "Christopher Nolan",
+    actors: ["Leonardo DiCaprio", "Joseph Gordon-Levitt", "Elliot Page", "Tom Hardy"],
+    trailerUrl: "https://www.youtube.com/watch?v=YoHD9XEInc0"
+  },
+  {
+    id: "438631",
+    title: "Dune",
+    originalTitle: "Dune",
+    backdropPath: "https://images.unsplash.com/photo-1547234935-80c7145ec969?auto=format&fit=crop&w=1600&q=80", // Cinematic desert landscape
+    posterPath: "https://image.tmdb.org/t/p/w500/d583mY6u26m6C1MRt686tX6696b.jpg",
+    overview: "Paul Atreides, a brilliant and gifted young man born into a great destiny beyond his understanding, must travel to the most dangerous planet in the universe to ensure the future of his family and his people. As malevolent forces explode into conflict over the planet's exclusive supply of the most precious resource in existence-a commodity capable of unlocking humanity's greatest potential-only those who can conquer their fear will survive.",
+    rating: 7.9,
+    releaseDate: "2021-09-15",
+    runtime: 155,
+    genres: ["Science Fiction", "Adventure"],
+    tagline: "Beyond fear, destiny awaits.",
+    director: "Denis Villeneuve",
+    actors: ["Timothée Chalamet", "Rebecca Ferguson", "Oscar Isaac", "Josh Brolin"],
+    trailerUrl: "https://www.youtube.com/watch?v=n9D0v07HPgw"
+  },
+  {
+    id: "155",
+    title: "The Dark Knight",
+    originalTitle: "The Dark Knight",
+    backdropPath: "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=1600&q=80", // Dark cityscape night skyline
+    posterPath: "https://image.tmdb.org/t/p/w500/qJ2tW6WMUDg9s7v24YmSgG0Cj8F.jpg",
+    overview: "Batman raises the stakes in his war on crime. With the help of Lieutenant Jim Gordon and District Attorney Harvey Dent, Batman sets out to dismantle the remaining criminal organizations that plague the streets. The partnership proves to be effective, but they soon find themselves prey to a reign of chaos unleashed by a rising criminal mastermind known to the terrified citizens of Gotham as the Joker.",
+    rating: 8.5,
+    releaseDate: "2008-07-16",
+    runtime: 152,
+    genres: ["Drama", "Action", "Crime", "Thriller"],
+    tagline: "Why So Serious?",
+    director: "Christopher Nolan",
+    actors: ["Christian Bale", "Heath Ledger", "Aaron Eckhart", "Maggie Gyllenhaal"],
+    trailerUrl: "https://www.youtube.com/watch?v=EXeTwQWrcwY"
+  },
+  {
+    id: "335984",
+    title: "Blade Runner 2049",
+    originalTitle: "Blade Runner 2049",
+    backdropPath: "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=1600&q=80", // Cyberpunk alley neon glow
+    posterPath: "https://image.tmdb.org/t/p/w500/gajMz2v9hh6f06gUsYg3u87796r.jpg",
+    overview: "Thirty years after the events of the first film, a new blade runner, LAPD Officer K, unearths a long-buried secret that has the potential to plunge what's left of society into chaos. K's discovery leads him on a quest to find Rick Deckard, a former LAPD blade runner who has been missing for 30 years.",
+    rating: 8.2,
+    releaseDate: "2017-10-04",
+    runtime: 164,
+    genres: ["Science Fiction", "Drama"],
+    tagline: "The key to the future has finally been unearthed.",
+    director: "Denis Villeneuve",
+    actors: ["Ryan Gosling", "Harrison Ford", "Ana de Armas", "Sylvia Hoeks"],
+    trailerUrl: "https://www.youtube.com/watch?v=gCcx85zbxz4"
+  },
+  {
+    id: "872585",
+    title: "Oppenheimer",
+    originalTitle: "Oppenheimer",
+    backdropPath: "https://images.unsplash.com/photo-1461360370896-922624d12aa1?auto=format&fit=crop&w=1600&q=80", // Scientific fire combustion
+    posterPath: "https://image.tmdb.org/t/p/w500/8Gxv8gS681966VDgK6Xv1k260Z0.jpg",
+    overview: "The story of J. Robert Oppenheimer's role in the development of the atomic bomb during World War II, tracking the complex decisions and heavy historical toll that reshaped modern global power.",
+    rating: 8.1,
+    releaseDate: "2023-07-19",
+    runtime: 180,
+    genres: ["Drama", "History"],
+    tagline: "The world forever changes.",
+    director: "Christopher Nolan",
+    actors: ["Cillian Murphy", "Emily Blunt", "Matt Damon", "Robert Downey Jr."],
+    trailerUrl: "https://www.youtube.com/watch?v=uYPbbEG8908"
+  },
+  {
+    id: "968051",
+    title: "Dune: Part Two",
+    originalTitle: "Dune: Part Two",
+    backdropPath: "https://images.unsplash.com/photo-1509114397022-ed747cca3f65?auto=format&fit=crop&w=1600&q=80", // Sand dunes at sundown
+    posterPath: "https://image.tmdb.org/t/p/w500/czemie0vXY2Xm0vCYHztbHIZvA6.jpg",
+    overview: "Follow the mythic journey of Paul Atreides as he unites with Chani and the Fremen while on a path of revenge against the conspirators who destroyed his family. Facing a choice between the love of his life and the fate of the known universe, he endeavors to prevent a terrible future only he can foresee.",
+    rating: 8.3,
+    releaseDate: "2024-02-27",
+    runtime: 166,
+    genres: ["Science Fiction", "Adventure"],
+    tagline: "Long live the fighters.",
+    director: "Denis Villeneuve",
+    actors: ["Timothée Chalamet", "Zendaya", "Rebecca Ferguson", "Austin Butler"],
+    trailerUrl: "https://www.youtube.com/watch?v=Way9Dexny3w"
+  },
+  {
+    id: "315162",
+    title: "Puss in Boots: The Last Wish",
+    originalTitle: "Puss in Boots: The Last Wish",
+    backdropPath: "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?auto=format&fit=crop&w=1600&q=80", // Artistic feline backdrop
+    posterPath: "https://image.tmdb.org/t/p/w500/kuf6HgcViGlbJnQr06mLaYgU36v.jpg",
+    overview: "Puss in Boots discovers that his passion for adventure has taken its toll: He has burned through eight of his nine lives, leaving him with only one life left. Puss sets out on an epic journey to find the mythical Wishing Star and restore his nine lives.",
+    rating: 8.2,
+    releaseDate: "2022-12-07",
+    runtime: 102,
+    genres: ["Animation", "Adventure", "Comedy", "Family", "Fantasy"],
+    tagline: "Say hello to his one last life.",
+    director: "Joel Crawford",
+    actors: ["Antonio Banderas", "Salma Hayek", "Harvey Guillén", "Florence Pugh"],
+    trailerUrl: "https://www.youtube.com/watch?v=RqrXhwS33yc"
+  },
+  {
+    id: "76600",
+    title: "Avatar: The Way of Water",
+    originalTitle: "Avatar: The Way of Water",
+    backdropPath: "https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=1600&q=80", // Luminous turquoise underwater
+    posterPath: "https://image.tmdb.org/t/p/w500/t6z8hp702Zp7Gp6N2gS3mFYmO6K.jpg",
+    overview: "Set more than a decade after the events of the first film, Jane and Neytiri have formed a family and are doing everything they can to stay together. However, they must leave their home and explore the regions of Pandora when an ancient threat resurfaces, forcing Jake to fight a difficult war against the humans.",
+    rating: 7.7,
+    releaseDate: "2022-12-14",
+    runtime: 192,
+    genres: ["Science Fiction", "Adventure", "Action"],
+    tagline: "Return to Pandora.",
+    director: "James Cameron",
+    actors: ["Sam Worthington", "Zoe Saldaña", "Sigourney Weaver", "Kate Winslet"]
+  },
+  {
+    id: "24428",
+    title: "The Avengers",
+    originalTitle: "The Avengers",
+    backdropPath: "https://images.unsplash.com/photo-1569003339405-ea396a5a8a90?auto=format&fit=crop&w=1600&q=80", // Shield/Superheroes symbol
+    posterPath: "https://image.tmdb.org/t/p/w500/RY97Z6w7gZ6v7m67uAJSgUo61v.jpg",
+    overview: "When an unexpected enemy emerges and threatens global safety and security, Nick Fury, director of the international peacekeeping agency known as S.H.I.E.L.D., finds himself in need of a team to pull the world back from the brink of disaster.",
+    rating: 7.7,
+    releaseDate: "2012-04-25",
+    runtime: 143,
+    genres: ["Action", "Science Fiction", "Adventure"],
+    tagline: "Some assembly required.",
+    director: "Joss Whedon",
+    actors: ["Robert Downey Jr.", "Chris Evans", "Mark Ruffalo", "Chris Hemsworth"]
+  },
+  {
+    id: "502356",
+    title: "The Super Mario Bros. Movie",
+    originalTitle: "The Super Mario Bros. Movie",
+    backdropPath: "https://images.unsplash.com/photo-1593305841991-05c297ba4575?auto=format&fit=crop&w=1600&q=80", // Vibrant game neon controllers
+    posterPath: "https://image.tmdb.org/t/p/w500/qNBAX6y5CamO6jPw16gW76pI827.jpg",
+    overview: "While working underground to fix a water main, Brooklyn plumbers Mario and brother Luigi are transported down a mysterious pipe and wander into a spin-tastic new world. But when the brothers are separated, Mario embarks on an epic quest to find Luigi.",
+    rating: 7.8,
+    releaseDate: "2023-04-05",
+    runtime: 92,
+    genres: ["Animation", "Family", "Adventure", "Fantasy", "Comedy"],
+    tagline: "Wahoo! Let's-a-go!",
+    director: "Aaron Horvath",
+    actors: ["Chris Pratt", "Anya Taylor-Joy", "Charlie Day", "Jack Black"]
+  },
+  {
+    id: "242",
+    title: "The Godfather",
+    originalTitle: "The Godfather",
+    backdropPath: "https://images.unsplash.com/photo-1533035353720-f1c6a75cd8ab?auto=format&fit=crop&w=1600&q=80", // Minimal majestic shadows
+    posterPath: "https://image.tmdb.org/t/p/w500/3bhkrj6P6Xor2fSVK9gJUorY2Zg.jpg",
+    overview: "Spanning the years 1945 to 1955, a chronicle of the fictional Italian-American Corleone crime family. When organized crime family patriarch, Vito Corleone, barely survives an attempt on his life, his youngest son, Michael, steps in to take care of the would-be killers, launching a campaign of bloody revenge.",
+    rating: 8.7,
+    releaseDate: "1972-03-14",
+    runtime: 175,
+    genres: ["Drama", "Crime"],
+    tagline: "An offer you can't refuse.",
+    director: "Francis Ford Coppola",
+    actors: ["Marlon Brando", "Al Pacino", "James Caan", "Richard S. Castellano"]
+  },
+  {
+    id: "tv-breaking-bad",
+    title: "Breaking Bad",
+    originalTitle: "Breaking Bad",
+    backdropPath: "https://images.unsplash.com/photo-1594909122845-11baa439b7bf?auto=format&fit=crop&w=1600&q=80",
+    posterPath: "https://image.tmdb.org/t/p/w500/ztGo4081H7vS7g9Y76g84g6i9gA.jpg",
+    overview: "When Walter White, a New Mexico chemistry teacher, is diagnosed with Stage III cancer and given a prognosis of only two years left to live. He becomes filled with a sense of fearlessness and an unrelenting desire to secure his family's financial future.",
+    rating: 8.9,
+    releaseDate: "2008-01-20",
+    runtime: 49,
+    genres: ["Drama", "Crime", "TV Series"],
+    tagline: "Change the equation.",
+    director: "Vince Gilligan",
+    actors: ["Bryan Cranston", "Aaron Paul", "Anna Gunn", "Bob Odenkirk"],
+    trailerUrl: "https://www.youtube.com/watch?v=HhesaQXLuRY"
+  },
+  {
+    id: "tv-stranger-things",
+    title: "Stranger Things",
+    originalTitle: "Stranger Things",
+    backdropPath: "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=1600&q=80",
+    posterPath: "https://image.tmdb.org/t/p/w500/49W0vIQ4mIP368m9v36n7q9nkFI.jpg",
+    overview: "When a young boy vanishes, a small town uncovers a mystery involving secret experiments, terrifying supernatural forces and one strange little girl with telekinetic powers.",
+    rating: 8.6,
+    releaseDate: "2016-07-15",
+    runtime: 50,
+    genres: ["Drama", "Sci-Fi & Fantasy", "Mystery", "TV Series"],
+    tagline: "One summer can change everything.",
+    director: "The Duffer Brothers",
+    actors: ["Winona Ryder", "David Harbour", "Millie Bobby Brown", "Finn Wolfhard"],
+    trailerUrl: "https://www.youtube.com/watch?v=b9EkMc79ZSU"
+  },
+  {
+    id: "tv-arcane",
+    title: "Arcane",
+    originalTitle: "Arcane",
+    backdropPath: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1600&q=80",
+    posterPath: "https://image.tmdb.org/t/p/w500/fqldwxuPl966krg789v6gPgSMyv.jpg",
+    overview: "Set in Utopia's sister city Zaun and high-society Piltover, Arcane tells the origins of two iconic League of Legends champions and the power that will tear them apart.",
+    rating: 8.8,
+    releaseDate: "2021-11-06",
+    runtime: 41,
+    genres: ["Animation", "Sci-Fi & Fantasy", "Action", "TV Series", "Anime"],
+    tagline: "Every legend has a beginning.",
+    director: "Christian Linke",
+    actors: ["Hailee Steinfeld", "Ella Purnell", "Kevin Alejandro", "Harry Lloyd"],
+    trailerUrl: "https://www.youtube.com/watch?v=fXmAurh012s"
+  },
+  {
+    id: "tv-the-last-of-us",
+    title: "The Last of Us",
+    originalTitle: "The Last of Us",
+    backdropPath: "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=1600&q=80",
+    posterPath: "https://image.tmdb.org/t/p/w500/uKVDFRIg1jS6m96e1Sg89490SgM.jpg",
+    overview: "Twenty years after modern civilization has been destroyed, Joel, a hardened survivor, is hired to smuggle Ellie, a 14-year-old girl, out of an oppressive quarantine zone.",
+    rating: 8.7,
+    releaseDate: "2023-01-15",
+    runtime: 52,
+    genres: ["Drama", "Action & Adventure", "TV Series"],
+    tagline: "When you're lost in the darkness, look for the light.",
+    director: "Craig Mazin",
+    actors: ["Pedro Pascal", "Bella Ramsey", "Gabriel Luna", "Anna Torv"],
+    trailerUrl: "https://www.youtube.com/watch?v=uLtkt8BonwM"
+  }
+];
+
+export const MOCK_LOCAL_FILENAMES = [
+  { fileName: "Interstellar.2014.1080p.BluRay.x264.mkv", matchedId: "157336", fileSize: "12.4 GB" },
+  { fileName: "Inception.2010.1080p.BRRip.x264.mp4", matchedId: "27205", fileSize: "2.1 GB" },
+  { fileName: "Dune.2021.Bluray.2160p.HEVC.mkv", matchedId: "438631", fileSize: "32.5 GB" },
+  { fileName: "The.Dark.Knight.2008.Ultimate.Edition.mp4", matchedId: "155", fileSize: "3.2 GB" },
+  { fileName: "Blade.Runner.2049.Directors.Cut.mkv", matchedId: "335984", fileSize: "18.1 GB" },
+  { fileName: "Oppenheimer.2023.IMAX.1080p.mkv", matchedId: "872585", fileSize: "14.2 GB" },
+  { fileName: "Dune.Part.2.2024.HDR.Atmos.mkv", matchedId: "968051", fileSize: "24.5 GB" },
+  { fileName: "Puss.In.Boots.Last.Wish.2022.1080p.mp4", matchedId: "315162", fileSize: "1.8 GB" },
+  { fileName: "Avatar.Way.Of.Water.2022.WebRip.x264.mov", matchedId: "76600", fileSize: "4.7 GB" },
+  { fileName: "The.Avengers.2012.x264.1080p.mkv", matchedId: "24428", fileSize: "2.5 GB" },
+  { fileName: "Super.Mario.Bros.Movie.2023.HDRip.mp4", matchedId: "502356", fileSize: "1.4 GB" },
+  { fileName: "Godfather.1972.Remastered.Criterion.mkv", matchedId: "242", fileSize: "8.9 GB" }
+];
