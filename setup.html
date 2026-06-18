@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Strøm — Server Setup</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #050505;
+      --bg-card:     #0d0d0d;
+      --bg-input:    #111111;
+      --border:      #1f1f1f;
+      --border-mid:  #2a2a2a;
+      --text:        #e4e4e7;
+      --text-muted:  #52525b;
+      --text-dim:    #3f3f46;
+      --orange:      #f97316;
+      --orange-dim:  rgba(249,115,22,0.12);
+      --orange-ring: rgba(249,115,22,0.3);
+      --green:       #22c55e;
+      --green-dim:   rgba(34,197,94,0.12);
+      --red:         #ef4444;
+      --red-dim:     rgba(239,68,68,0.1);
+      --violet:      #a78bfa;
+      --violet-dim:  rgba(167,139,250,0.1);
+      --mono:        'JetBrains Mono', monospace;
+      --sans:        'Inter', sans-serif;
+    }
+
+    html { font-size: 14px; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 48px 24px 80px;
+      line-height: 1.5;
+    }
+
+    /* ── HEADER ─────────────────────────────────── */
+    header {
+      width: 100%; max-width: 800px;
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 40px; padding-bottom: 24px;
+      border-bottom: 1px solid var(--border);
+    }
+    .logo { display: flex; align-items: baseline; gap: 10px; }
+    .logo-name { font-family: var(--mono); font-weight: 700; font-size: 1.35rem; letter-spacing: -0.02em; color: #fff; }
+    .logo-name span { color: var(--orange); }
+    .logo-tag { font-family: var(--mono); font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.15em; color: var(--text-muted); border: 1px solid var(--border-mid); padding: 2px 7px; border-radius: 4px; }
+
+    .status-pill {
+      font-family: var(--mono); font-size: 0.65rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.12em;
+      padding: 5px 12px; border-radius: 999px; border: 1px solid var(--border-mid);
+      color: var(--text-muted); display: flex; align-items: center; gap: 6px; transition: all 0.25s;
+    }
+    .status-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim); transition: background 0.25s; }
+    .status-pill.ok  { color: var(--green);  border-color: rgba(34,197,94,0.25);  background: var(--green-dim); }
+    .status-pill.ok  .dot { background: var(--green); }
+    .status-pill.err { color: var(--red);    border-color: rgba(239,68,68,0.25);   background: var(--red-dim); }
+    .status-pill.err .dot { background: var(--red); }
+    @keyframes ping { 0%{transform:scale(1);opacity:1} 70%{transform:scale(1.8);opacity:0} 100%{transform:scale(1);opacity:0} }
+
+    /* ── MAIN ───────────────────────────────────── */
+    main { width: 100%; max-width: 800px; display: flex; flex-direction: column; gap: 24px; }
+
+    /* ── CARDS ──────────────────────────────────── */
+    .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; padding: 28px 32px; }
+    .card-header { display: flex; align-items: flex-start; gap: 14px; padding-bottom: 20px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+    .card-icon { flex-shrink:0; width:38px; height:38px; border-radius:10px; background:var(--orange-dim); border:1px solid rgba(249,115,22,0.22); color:var(--orange); display:flex; align-items:center; justify-content:center; }
+    .card-icon svg { width:18px; height:18px; stroke:currentColor; fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+    .card-title { font-size:0.92rem; font-weight:700; color:#fff; margin-bottom:3px; }
+    .card-desc  { font-size:0.75rem; color:var(--text-muted); line-height:1.5; }
+
+    /* ── INPUTS ─────────────────────────────────── */
+    .field { display:flex; flex-direction:column; gap:6px; margin-bottom:16px; }
+    .field:last-child { margin-bottom:0; }
+    label { font-family:var(--mono); font-size:0.62rem; font-weight:700; text-transform:uppercase; letter-spacing:0.12em; color:var(--text-muted); }
+
+    .input-wrap { display:flex; align-items:center; background:var(--bg-input); border:1px solid var(--border-mid); border-radius:10px; overflow:hidden; transition:border-color 0.15s, box-shadow 0.15s; }
+    .input-wrap:focus-within { border-color:var(--orange); box-shadow:0 0 0 3px var(--orange-ring); }
+    .input-prefix { font-family:var(--mono); font-size:0.68rem; color:var(--text-dim); padding:0 8px 0 14px; white-space:nowrap; user-select:none; }
+
+    input[type="text"], input[type="password"], input[type="url"] {
+      flex:1; background:transparent; border:none; outline:none;
+      font-family:var(--mono); font-size:0.78rem; color:var(--text); padding:12px 14px 12px 4px;
+    }
+    input::placeholder { color:var(--text-dim); }
+
+    select {
+      background:var(--bg-input); border:1px solid var(--border-mid); border-radius:10px;
+      font-family:var(--mono); font-size:0.72rem; color:var(--text); padding:0 12px;
+      outline:none; cursor:pointer; height:100%; transition:border-color 0.15s;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2352525b' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      padding-right: 28px;
+    }
+    select:focus { border-color:var(--orange); box-shadow:0 0 0 3px var(--orange-ring); }
+    option { background:#1a1a1a; }
+
+    .eye-btn { background:none; border:none; cursor:pointer; color:var(--text-muted); padding:0 12px; display:flex; align-items:center; transition:color 0.15s; }
+    .eye-btn:hover { color:var(--text); }
+    .eye-btn svg { width:14px; height:14px; stroke:currentColor; fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+
+    /* ── PATHS LIST ─────────────────────────────── */
+    #paths-list { display:flex; flex-direction:column; gap:8px; margin-bottom:14px; min-height: 4px; }
+
+    .path-row {
+      display:grid; grid-template-columns:8px 1fr auto auto;
+      align-items:center; gap:12px;
+      background:var(--bg-input); border:1px solid var(--border-mid);
+      border-radius:10px; padding:10px 14px;
+      animation: fadeIn 0.15s ease;
+    }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:none} }
+
+    .path-dot { width:7px; height:7px; border-radius:50%; background:var(--orange); flex-shrink:0; }
+
+    .path-info { display:flex; flex-direction:column; gap:3px; min-width:0; }
+    .path-text { font-family:var(--mono); font-size:0.76rem; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .path-cat-badge {
+      display:inline-flex; align-items:center;
+      font-family:var(--mono); font-size:0.58rem; font-weight:700;
+      text-transform:uppercase; letter-spacing:0.1em;
+      padding:2px 7px; border-radius:4px;
+      background:var(--orange-dim); border:1px solid rgba(249,115,22,0.2); color:var(--orange);
+      width:fit-content;
+    }
+
+    .path-remove { background:none; border:none; cursor:pointer; color:var(--text-dim); padding:4px; border-radius:6px; display:flex; align-items:center; transition:color 0.15s, background 0.15s; flex-shrink:0; }
+    .path-remove:hover { color:var(--red); background:var(--red-dim); }
+    .path-remove svg { width:13px; height:13px; stroke:currentColor; fill:none; stroke-width:2; stroke-linecap:round; }
+
+    .path-empty { font-family:var(--mono); font-size:0.72rem; color:var(--text-dim); font-style:italic; padding:4px 0; }
+
+    /* ── ADD PATH ROW ───────────────────────────── */
+    .add-path-row { display:grid; grid-template-columns:1fr 160px auto; gap:8px; align-items:stretch; margin-top:4px; }
+    .add-path-row .input-wrap { height:44px; }
+    .add-path-row #new-path-category { height:44px; background:var(--bg-input); border:1px solid var(--border-mid); border-radius:10px; font-family:var(--mono); font-size:0.72rem; color:var(--text); padding:0 12px; outline:none; transition:border-color 0.15s, box-shadow 0.15s; }
+    .add-path-row #new-path-category:focus { border-color:var(--orange); box-shadow:0 0 0 3px var(--orange-ring); }
+
+    .btn-add {
+      display:flex; align-items:center; gap:6px; padding:0 16px; height:44px;
+      background:var(--orange-dim); border:1px solid rgba(249,115,22,0.3); border-radius:10px;
+      color:var(--orange); font-family:var(--mono); font-size:0.7rem; font-weight:700;
+      text-transform:uppercase; letter-spacing:0.08em; cursor:pointer; white-space:nowrap;
+      transition:background 0.15s, border-color 0.15s;
+    }
+    .btn-add:hover { background:rgba(249,115,22,0.2); border-color:rgba(249,115,22,0.5); }
+    .btn-add svg { width:13px; height:13px; stroke:currentColor; fill:none; stroke-width:2.2; stroke-linecap:round; }
+
+    /* ── HINT ───────────────────────────────────── */
+    .hint { display:flex; align-items:flex-start; gap:9px; margin-top:14px; padding:11px 14px; background:rgba(249,115,22,0.05); border:1px solid rgba(249,115,22,0.1); border-radius:9px; font-size:0.72rem; color:var(--text-muted); line-height:1.55; }
+    .hint svg { flex-shrink:0; margin-top:1px; width:13px; height:13px; stroke:var(--orange); fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+
+    /* ── SYNC BANNER ────────────────────────────── */
+    .sync-banner {
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+      padding:14px 18px; background:rgba(167,139,250,0.06); border:1px solid rgba(167,139,250,0.15);
+      border-radius:12px; margin-top:16px;
+    }
+    .sync-banner-text { display:flex; flex-direction:column; gap:2px; }
+    .sync-banner-title { font-size:0.78rem; font-weight:600; color:#c4b5fd; }
+    .sync-banner-desc  { font-size:0.7rem; color:var(--text-muted); }
+
+    .btn-sync {
+      flex-shrink:0; display:flex; align-items:center; gap:7px;
+      padding:9px 18px; background:rgba(167,139,250,0.12); border:1px solid rgba(167,139,250,0.3);
+      border-radius:9px; color:#c4b5fd; font-family:var(--mono); font-size:0.68rem; font-weight:700;
+      text-transform:uppercase; letter-spacing:0.1em; cursor:pointer; white-space:nowrap;
+      transition:background 0.15s, border-color 0.15s;
+    }
+    .btn-sync:hover { background:rgba(167,139,250,0.2); border-color:rgba(167,139,250,0.5); }
+    .btn-sync:disabled { opacity:0.4; cursor:not-allowed; }
+    .btn-sync svg { width:13px; height:13px; stroke:currentColor; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+    .btn-sync.spinning svg { animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── SYNC RESULTS ──────────────────────────── */
+    #sync-results {
+      display:none; margin-top:12px; padding:14px 16px;
+      background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.07);
+      border-radius:10px; font-size:0.7rem; font-family:var(--mono);
+    }
+    #sync-results.visible { display:block; }
+    .sync-results-title {
+      font-size:0.65rem; font-weight:700; text-transform:uppercase;
+      letter-spacing:0.1em; color:var(--text-muted); margin-bottom:10px;
+    }
+    .sync-cat-row {
+      display:flex; align-items:center; justify-content:space-between;
+      padding:6px 0; border-bottom:1px solid rgba(255,255,255,0.05);
+    }
+    .sync-cat-row:last-child { border-bottom:none; }
+    .sync-cat-name { color:#e4e4e7; font-weight:600; }
+    .sync-cat-count { color:var(--orange); font-weight:700; }
+    .sync-errors {
+      margin-top:10px; padding:10px 12px;
+      background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.2);
+      border-radius:8px; color:#fca5a5;
+    }
+    .sync-errors-title { font-weight:700; margin-bottom:6px; color:#f87171; }
+    .sync-error-line { color:#fca5a5; line-height:1.6; font-size:0.65rem; }
+    .sync-total {
+      display:flex; align-items:center; justify-content:space-between;
+      padding-top:10px; margin-top:4px; border-top:1px solid rgba(255,255,255,0.08);
+      font-weight:700;
+    }
+    .sync-total-label { color:var(--text-muted); }
+    .sync-total-count { color:#4ade80; font-size:0.8rem; }
+
+    /* ── SAVE ROW ───────────────────────────────── */
+    .save-wrap { display:flex; align-items:center; justify-content:flex-end; gap:14px; padding-top:8px; }
+    #save-msg { font-family:var(--mono); font-size:0.68rem; color:var(--text-muted); transition:all 0.25s; opacity:0; }
+    #save-msg.visible { opacity:1; }
+    #save-msg.ok   { color:var(--green); }
+    #save-msg.fail { color:var(--red); }
+
+
+    .btn-connect {
+      display:inline-flex; align-items:center; gap:7px;
+      font-family:var(--mono); font-size:0.72rem; font-weight:700;
+      text-transform:uppercase; letter-spacing:0.08em;
+      padding:0 18px; height:42px; border-radius:10px;
+      background:rgba(249,115,22,0.1); border:1px solid rgba(249,115,22,0.35);
+      color:var(--orange); cursor:pointer; transition:all 0.15s; white-space:nowrap;
+    }
+    .btn-connect:hover { background:rgba(249,115,22,0.2); border-color:rgba(249,115,22,0.55); }
+    .btn-connect:disabled { opacity:0.4; cursor:not-allowed; }
+    .btn-connect svg { width:13px; height:13px; stroke:currentColor; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+    .btn-connect.spinning svg { animation: spin 0.8s linear infinite; }
+    .btn-connect.ok  { background:rgba(34,197,94,0.1); border-color:rgba(34,197,94,0.35); color:var(--green); }
+    .btn-connect.ok:hover  { background:rgba(34,197,94,0.2); }
+    .btn-connect.err { background:rgba(239,68,68,0.1); border-color:rgba(239,68,68,0.35); color:var(--red); }
+    .btn-connect.err:hover { background:rgba(239,68,68,0.2); }
+
+    .tracker-row { display:flex; align-items:center; gap:10px; }
+    .tracker-row .input-wrap { flex:1; }
+    .tracker-status-text { font-family:var(--mono); font-size:0.65rem; font-weight:700;
+      text-transform:uppercase; letter-spacing:0.1em; color:var(--text-dim);
+      min-width:70px; text-align:right; transition:color 0.2s; }
+    .tracker-status-text.ok  { color:var(--green); }
+    .tracker-status-text.err { color:var(--red); }
+    .tracker-status-text.connecting { color:#f59e0b; }
+    .btn-save {
+      display:flex; align-items:center; gap:8px; padding:13px 28px;
+      background:var(--orange); border:none; border-radius:11px;
+      color:#000; font-family:var(--mono); font-size:0.78rem; font-weight:700;
+      text-transform:uppercase; letter-spacing:0.1em; cursor:pointer;
+      transition:background 0.15s, transform 0.1s;
+    }
+    .btn-save:hover  { background:#fb923c; }
+    .btn-save:active { transform:scale(0.97); }
+    .btn-save:disabled { background:#333; color:#666; cursor:not-allowed; transform:none; }
+    .btn-save svg { width:14px; height:14px; stroke:currentColor; fill:none; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; }
+
+    footer { margin-top:48px; font-family:var(--mono); font-size:0.62rem; color:var(--text-dim); letter-spacing:0.08em; text-align:center; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <span class="logo-name">Str<span>ø</span>m</span>
+    <span class="logo-tag">Server Setup</span>
+  </div>
+  <div class="status-pill" id="status-pill">
+    <span class="dot"></span>
+    <span id="status-text">Loading…</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- ── LIBRARY PATHS ──────────────────────────────────── -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon">
+        <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h3l2 2h9a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>
+      </div>
+      <div>
+        <div class="card-title">Library Paths</div>
+        <div class="card-desc">Directories on this Windows PC where Strøm will scan for video files. Each path gets a category label that appears as a section in the TV sidebar.</div>
+      </div>
+    </div>
+
+    <div id="paths-list"></div>
+
+    <div class="add-path-row">
+      <div class="input-wrap">
+        <span class="input-prefix">DIR:</span>
+        <input type="text" id="new-path-input" placeholder="D:\Media\Movies or \\NAS\Videos" autocomplete="off" spellcheck="false" />
+      </div>
+      <input type="text" id="new-path-category" placeholder="e.g. Movies, Cartoon…" autocomplete="off" spellcheck="false" />
+      <button class="btn-add" id="add-path-btn" type="button">
+        <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add
+      </button>
+    </div>
+
+    <div class="hint">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      Use full Windows paths (e.g. <code style="color:var(--orange)">D:\Movies</code>) or UNC shares (e.g. <code style="color:var(--orange)">\\DESKTOP-PC\Kino\Filmer</code>). The category label controls which sidebar section the content appears under on the TV.
+    </div>
+
+    <!-- Sync banner — push paths to the running server without full save -->
+    <div class="sync-banner">
+      <div class="sync-banner-text">
+        <span class="sync-banner-title">Sync paths to running server</span>
+        <span class="sync-banner-desc">Pushes library paths live without restarting. Run this after adding or removing paths.</span>
+      </div>
+      <button class="btn-sync" id="sync-btn" type="button">
+        <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        Sync Library
+      </button>
+    </div>
+    <div id="sync-results">
+      <div class="sync-results-title">Scan Results</div>
+      <div id="sync-results-body"></div>
+    </div>
+  </div>
+
+  <!-- ── TMDB ───────────────────────────────────────────── -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon">
+        <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+      </div>
+      <div>
+        <div class="card-title">TMDB API Key</div>
+        <div class="card-desc">Used to fetch movie posters, backdrops, ratings, and metadata. Get a free Read Access Token from <strong style="color:var(--text)">themoviedb.org → Settings → API</strong>.</div>
+      </div>
+    </div>
+    <div class="field">
+      <label>TMDB Read Access Token / API Key</label>
+      <div class="input-wrap">
+        <span class="input-prefix">TOKEN:</span>
+        <input type="password" id="tmdb-key" placeholder="eyJhbGci…" autocomplete="off" spellcheck="false" />
+        <button class="eye-btn" type="button" data-target="tmdb-key">
+          <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── TRACKERFLIX ────────────────────────────────────── -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon">
+        <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+      </div>
+      <div>
+        <div class="card-title">TrackerFlix Host</div>
+        <div class="card-desc">Local URL where your TrackerFlix instance is running. Leave as default if running on this machine.</div>
+      </div>
+    </div>
+    <div class="field">
+      <label>TrackerFlix Base URL</label>
+      <div class="tracker-row">
+        <div class="input-wrap">
+          <span class="input-prefix">HOST:</span>
+          <input type="url" id="trackerflix-host" placeholder="http://localhost:3000" autocomplete="off" spellcheck="false" />
+        </div>
+        <button class="btn-connect" id="tracker-connect-btn" type="button">
+          <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          <span id="tracker-connect-label">Connect</span>
+        </button>
+      </div>
+      <span class="tracker-status-text" id="tracker-status-text"></span>
+    </div>
+  </div>
+
+
+  <!-- ── SAVE ───────────────────────────────────────────── -->
+  <div class="save-wrap">
+    <span id="save-msg"></span>
+    <button class="btn-save" id="save-btn" type="button">
+      <svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+      Save Configuration
+    </button>
+  </div>
+
+</main>
+
+<footer>STRØM CINEMA · PLEXUS SERVER v1 · localhost:5000/setup</footer>
+
+<script>
+  // ── State ───────────────────────────────────────────────
+  // Each entry: { path: string, category: string }
+  let paths = [];
+
+  // ── DOM refs ────────────────────────────────────────────
+  const pathsList     = document.getElementById('paths-list');
+  const newPathInput  = document.getElementById('new-path-input');
+  const newPathCat    = document.getElementById('new-path-category');
+  const addPathBtn    = document.getElementById('add-path-btn');
+  const syncBtn       = document.getElementById('sync-btn');
+  const tmdbKeyInput  = document.getElementById('tmdb-key');
+  const trackerInput  = document.getElementById('trackerflix-host');
+  const trackerConnectBtn   = document.getElementById('tracker-connect-btn');
+  const trackerConnectLabel = document.getElementById('tracker-connect-label');
+  const trackerStatusText   = document.getElementById('tracker-status-text');
+  const saveBtn       = document.getElementById('save-btn');
+  const saveMsg       = document.getElementById('save-msg');
+  const statusPill    = document.getElementById('status-pill');
+  const statusText    = document.getElementById('status-text');
+
+
+  // ── TrackerFlix connection test ──────────────────────────
+  async function testTrackerFlix() {
+    const host = trackerInput.value.trim().replace(/\/$/, '') || 'http://localhost:3000';
+    trackerInput.value = host;
+
+    trackerConnectBtn.disabled = true;
+    trackerConnectBtn.className = 'btn-connect spinning';
+    trackerConnectLabel.textContent = 'Connecting…';
+    trackerStatusText.className = 'tracker-status-text connecting';
+    trackerStatusText.textContent = 'connecting…';
+
+    try {
+      const res = await fetch(`${host}/api/catalog`, { signal: AbortSignal.timeout(8000) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const text = await res.text();
+      JSON.parse(text); // validate JSON
+      trackerConnectBtn.className = 'btn-connect ok';
+      trackerConnectLabel.textContent = 'Connected';
+      trackerStatusText.className = 'tracker-status-text ok';
+      trackerStatusText.textContent = '✓ online';
+    } catch (err) {
+      trackerConnectBtn.className = 'btn-connect err';
+      trackerConnectLabel.textContent = 'Retry';
+      trackerStatusText.className = 'tracker-status-text err';
+      trackerStatusText.textContent = '✗ unreachable';
+    } finally {
+      trackerConnectBtn.disabled = false;
+    }
+  }
+
+  trackerConnectBtn.addEventListener('click', testTrackerFlix);
+
+  // Reset status badge when user edits the host
+  trackerInput.addEventListener('input', () => {
+    trackerConnectBtn.className = 'btn-connect';
+    trackerConnectLabel.textContent = 'Connect';
+    trackerStatusText.className = 'tracker-status-text';
+    trackerStatusText.textContent = '';
+  });
+
+  // ── Status pill ─────────────────────────────────────────
+  function setStatus(state, label) {
+    statusPill.className = 'status-pill ' + (state || '');
+    statusText.textContent = label;
+  }
+
+  // ── HTML escape ─────────────────────────────────────────
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Render paths ────────────────────────────────────────
+  function renderPaths() {
+    pathsList.innerHTML = '';
+    if (paths.length === 0) {
+      pathsList.innerHTML = '<div class="path-empty">No library paths configured yet.</div>';
+      return;
+    }
+    paths.forEach((entry, i) => {
+      const row = document.createElement('div');
+      row.className = 'path-row';
+      row.innerHTML = `
+        <span class="path-dot"></span>
+        <div class="path-info">
+          <span class="path-text" title="${esc(entry.path)}">${esc(entry.path)}</span>
+          <span class="path-cat-badge">${esc(entry.category)}</span>
+        </div>
+        <span></span>
+        <button class="path-remove" data-idx="${i}" title="Remove">
+          <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      `;
+      pathsList.appendChild(row);
+    });
+  }
+
+  // ── Add path ────────────────────────────────────────────
+  function addPath() {
+    const p = newPathInput.value.trim();
+    if (!p) { newPathInput.focus(); return; }
+    const cat = newPathCat.value.trim() || 'Movies';
+    // Prevent exact duplicate path+category combos
+    if (paths.some(e => e.path === p && e.category === cat)) {
+      newPathInput.select(); return;
+    }
+    paths.push({ path: p, category: cat });
+    renderPaths();
+    newPathInput.value = '';
+    newPathCat.value = '';
+    newPathInput.focus();
+  }
+
+  addPathBtn.addEventListener('click', addPath);
+  newPathInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); addPath(); }
+  });
+
+  // ── Remove path (delegation) ────────────────────────────
+  pathsList.addEventListener('click', e => {
+    const btn = e.target.closest('.path-remove');
+    if (!btn) return;
+    paths.splice(parseInt(btn.dataset.idx, 10), 1);
+    renderPaths();
+  });
+
+  // ── Eye toggle ──────────────────────────────────────────
+  document.querySelectorAll('.eye-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const inp = document.getElementById(btn.dataset.target);
+      inp.type = inp.type === 'password' ? 'text' : 'password';
+    });
+  });
+
+  // ── Sync library paths to running server ────────────────
+  // Calls POST /api/paths with the flat path strings so the server
+  // rescans immediately without needing a restart.
+  const syncResults    = document.getElementById('sync-results');
+  const syncResultBody = document.getElementById('sync-results-body');
+
+  syncBtn.addEventListener('click', async () => {
+    syncBtn.disabled = true;
+    syncBtn.classList.add('spinning');
+    syncResults.classList.remove('visible');
+    const origLabel = syncBtn.innerHTML;
+    syncBtn.innerHTML = `<svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg> Syncing…`;
+
+    try {
+      // 1. Push paths to server
+      const pathRes = await fetch('/api/paths', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paths: paths }),
+      });
+      if (!pathRes.ok) throw new Error(`HTTP ${pathRes.status}`);
+
+      // 2. Trigger a scan and get results
+      const scanRes = await fetch('/api/movies');
+      if (!scanRes.ok) throw new Error(`Scan HTTP ${scanRes.status}`);
+      const { movies = [], debug = [] } = await scanRes.json();
+
+      // 3. Group by category
+      const cats = {};
+      for (const m of movies) {
+        const cat = m.category || 'Unknown';
+        cats[cat] = (cats[cat] || 0) + 1;
+      }
+
+      // 4. Collect errors from debug log
+      const errors = debug.filter(l => l.startsWith('ERROR') || l.startsWith('NOT FOUND'));
+
+      // 5. Render results
+      let html = '';
+      const catEntries = Object.entries(cats).sort((a,b) => b[1]-a[1]);
+      if (catEntries.length === 0) {
+        html += `<div class="sync-cat-row"><span class="sync-cat-name" style="color:#71717a">No video files found</span></div>`;
+      } else {
+        for (const [cat, count] of catEntries) {
+          html += `<div class="sync-cat-row">
+            <span class="sync-cat-name">${cat}</span>
+            <span class="sync-cat-count">${count} file${count !== 1 ? 's' : ''}</span>
+          </div>`;
+        }
+        html += `<div class="sync-total">
+          <span class="sync-total-label">Total</span>
+          <span class="sync-total-count">✓ ${movies.length} video${movies.length !== 1 ? 's' : ''} indexed</span>
+        </div>`;
+      }
+      if (errors.length > 0) {
+        html += `<div class="sync-errors">
+          <div class="sync-errors-title">⚠ ${errors.length} path problem${errors.length !== 1 ? 's' : ''}</div>
+          ${errors.map(e => `<div class="sync-error-line">${e}</div>`).join('')}
+        </div>`;
+      }
+      syncResultBody.innerHTML = html;
+      syncResults.classList.add('visible');
+
+      syncBtn.innerHTML = `<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Synced!`;
+      setStatus('ok', `${movies.length} files indexed`);
+      setTimeout(() => {
+        syncBtn.innerHTML = origLabel;
+        syncBtn.classList.remove('spinning');
+        setStatus('', 'Ready');
+      }, 2500);
+    } catch (err) {
+      syncBtn.innerHTML = `<svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Failed`;
+      setStatus('err', 'Sync failed: ' + err.message);
+      syncResultBody.innerHTML = `<div class="sync-errors"><div class="sync-errors-title">❌ Sync error</div><div class="sync-error-line">${err.message}</div></div>`;
+      syncResults.classList.add('visible');
+      console.error('[Setup] Sync error:', err);
+      setTimeout(() => {
+        syncBtn.innerHTML = origLabel;
+        syncBtn.classList.remove('spinning');
+        setStatus('', 'Ready');
+      }, 3000);
+    } finally {
+      syncBtn.disabled = false;
+    }
+  });
+
+  // ── Load config ─────────────────────────────────────────
+  async function loadConfig() {
+    setStatus('', 'Loading…');
+    try {
+      const res = await fetch('/api/setup');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      // libraryPaths can be either the old string[] or new {path,category}[]
+      if (Array.isArray(data.libraryPaths)) {
+        paths = data.libraryPaths.map(entry =>
+          typeof entry === 'string'
+            ? { path: entry, category: 'Movies' }   // back-compat: old plain strings
+            : entry
+        );
+      } else {
+        paths = [];
+      }
+
+      tmdbKeyInput.value  = data.tmdbApiKey     || '';
+      trackerInput.value  = data.trackerFlixHost || 'http://localhost:3000';
+      renderPaths();
+      setStatus('ok', 'Config loaded');
+      setTimeout(() => setStatus('', 'Ready'), 2000);
+    } catch (err) {
+      setStatus('err', 'Load failed');
+      console.error('[Setup] Load error:', err);
+    }
+  }
+
+  // ── Save config ─────────────────────────────────────────
+  async function saveConfig() {
+    saveBtn.disabled = true;
+    saveMsg.className = 'visible';
+    saveMsg.textContent = 'Saving…';
+
+    const payload = {
+      libraryPaths:    paths,           // now [{path, category}] objects
+      tmdbApiKey:      tmdbKeyInput.value.trim(),
+      trackerFlixHost: trackerInput.value.trim() || 'http://localhost:3000',
+    };
+
+    try {
+      const res = await fetch('/api/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      saveMsg.className = 'visible ok';
+      saveMsg.textContent = '✓ Saved to plexus-config.json';
+      setStatus('ok', 'Config saved');
+      setTimeout(() => { saveMsg.className = ''; setStatus('', 'Ready'); }, 3000);
+    } catch (err) {
+      saveMsg.className = 'visible fail';
+      saveMsg.textContent = '✕ Save failed';
+      setStatus('err', 'Save failed');
+      console.error('[Setup] Save error:', err);
+    } finally {
+      saveBtn.disabled = false;
+    }
+  }
+
+  saveBtn.addEventListener('click', saveConfig);
+
+  // ── Boot ─────────────────────────────────────────────────
+  loadConfig();
+</script>
+</body>
+</html>
