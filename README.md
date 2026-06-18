@@ -1,6 +1,6 @@
 <img width="2242" height="1240" alt="Screenshot 2026-06-18 223712" src="https://github.com/user-attachments/assets/2e3d9344-75f8-4f80-b9f0-cc3ca35506d3" />
 > **First public release**
-Bugs are expected. If you find something broken or have ideas for improvement, please [open an issue](https://github.com/StromCinema/issues) — all feedback is appreciated and helps Strøm Cinema better.
+Bugs are expected. If you find something broken or have ideas for improvement, please open an issue — all feedback is appreciated and helps Strøm Cinema better.
 
 
 
