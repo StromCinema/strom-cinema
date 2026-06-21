@@ -53,3 +53,8 @@ If it fails: check the PC firewall allows inbound traffic on port 5000, and conf
 <img width="2243" height="1253" alt="Screenshot 2026-06-18 223734" src="https://github.com/user-attachments/assets/e441d0da-7b53-422e-8cc0-5d4797450c46" />
 <img width="2242" height="1240" alt="Screenshot 2026-06-18 223712" src="https://github.com/user-attachments/assets/9ca3302c-68ec-433d-bebe-c3aa1b6e361f" />
 
+Changelog:
+2026-06-21
+Fix: Library not loading on first launch (Android)
+On first launch, the app failed to display movies and TV series even when library-cache.json was present on the backend. A restart was required before content appeared.
+
