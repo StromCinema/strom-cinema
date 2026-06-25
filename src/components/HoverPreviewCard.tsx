@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
-import { Play, Info, Tv } from 'lucide-react';
+import { Play, Tv } from 'lucide-react';
 import { Movie } from '../types';
 import type { TrackInfo } from '../types';
 import { useActivePreview } from './ActivePreviewContext';
@@ -161,8 +161,6 @@ export default function HoverPreviewCard({
     }
   };
 
-  const ratingBorderColor = targetPlatform === 'tizen-tv' ? 'border-cyan-500/30' : 'border-orange-500/30';
-  const ratingTextColor = targetPlatform === 'tizen-tv' ? 'text-cyan-400' : 'text-orange-400';
   const accentRing = targetPlatform === 'tizen-tv'
     ? 'ring-4 ring-cyan-400 border-cyan-400/50 shadow-[0_0_25px_rgba(34,211,238,0.5)] ring-offset-2 ring-offset-zinc-950 scale-105 z-50'
     : 'ring-4 ring-orange-500 border-orange-500/50 shadow-[0_0_25px_rgba(249,115,22,0.5)] ring-offset-2 ring-offset-zinc-950 scale-105 z-50';
@@ -225,7 +223,7 @@ export default function HoverPreviewCard({
         )}
         {/* ─────────────────────────────────────────────────────────────────── */}
 
-        {/* Idle meta (title + rating) */}
+        {/* Idle meta (title only) */}
         <div
           className="absolute inset-0 p-3 flex flex-col justify-end pointer-events-none z-20 transition-opacity duration-200"
           style={{ opacity: isActive ? 0 : 1 }}
@@ -233,14 +231,6 @@ export default function HoverPreviewCard({
           <span className="text-[10px] sm:text-[11px] font-bold text-white truncate max-w-full leading-tight">
             {movie.title}
           </span>
-          <div className="flex items-center justify-between mt-0.5 text-zinc-400">
-            <span className="text-[8px] font-mono">
-              {movie.releaseDate?.split('-')[0]}
-            </span>
-            <span className={`text-[8px] font-mono font-bold ${ratingTextColor}`}>
-              ★ {movie.rating}
-            </span>
-          </div>
         </div>
 
         {/* Active meta (full info + buttons) */}
@@ -248,32 +238,10 @@ export default function HoverPreviewCard({
           className="absolute inset-x-0 bottom-0 p-3 sm:p-4 z-30 flex flex-col justify-end text-left transition-all duration-200 pointer-events-none"
           style={{ opacity: isActive ? 1 : 0, transform: isActive ? 'translateY(0)' : 'translateY(8px)', pointerEvents: isActive ? 'auto' : 'none' }}
         >
-          <h3 className="text-xs sm:text-sm font-black text-white leading-tight font-sans tracking-tight mb-1 truncate">
+          <h3 className="text-xs sm:text-sm font-black text-white leading-tight font-sans tracking-tight mb-2 truncate">
             {movie.title}
           </h3>
-          <div className="flex items-center gap-1.5 text-[9px] text-zinc-300 font-mono mb-2 flex-wrap">
-            <span className={`px-1 rounded border ${ratingBorderColor} ${ratingTextColor} font-extrabold`}>
-              ★ {movie.rating}
-            </span>
-            <span>{movie.releaseDate?.split('-')[0]}</span>
-            {movie.runtime && <span>{movie.runtime}m</span>}
-            {/* ── NEW: show episode count in active overlay too ── */}
-            {isMultiEpisode && (
-              <span className={`px-1 rounded border ${ratingBorderColor} ${ratingTextColor} font-extrabold`}>
-                {episodes.length} EPS
-              </span>
-            )}
-          </div>
-          {movie.genres && movie.genres.length > 0 && (
-            <div className="flex flex-wrap gap-1 mb-2.5">
-              {movie.genres.slice(0, 2).map((g) => (
-                <span key={g} className="text-[8px] font-sans font-bold uppercase tracking-wider px-1.5 py-0.5 bg-white/10 text-zinc-200 rounded-sm">
-                  {g}
-                </span>
-              ))}
-            </div>
-          )}
-          <div className="flex items-center gap-2 mt-0.5" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
             <button
               onClick={onPlayClick}
               className={`flex items-center justify-center gap-1 px-3 py-1 text-[9px] font-bold font-mono uppercase tracking-wider text-white rounded-lg transition-transform hover:scale-105 active:scale-95 shadow cursor-pointer ${
@@ -281,14 +249,7 @@ export default function HoverPreviewCard({
               }`}
             >
               <Play size={9} fill="currentColor" />
-              {/* ── Label changes when there are multiple episodes ── */}
               {isMultiEpisode ? 'Episodes' : 'Play'}
-            </button>
-            <button
-              onClick={onClick}
-              className="flex items-center justify-center gap-1 px-3 py-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white font-bold text-[9px] font-mono uppercase tracking-wider rounded-lg transition-transform hover:scale-105 active:scale-95 cursor-pointer shadow"
-            >
-              <Info size={9} /> Info
             </button>
           </div>
         </div>

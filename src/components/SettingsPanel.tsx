@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Image, LogOut, Zap, CheckCircle2, XCircle, Loader2, Wifi } from 'lucide-react';
+import { Image, LogOut, Zap, CheckCircle2, XCircle, Loader2, Wifi, RefreshCw } from 'lucide-react';
 import { TMDBConfig } from '../types';
 
 interface SettingsPanelProps {
@@ -11,6 +11,8 @@ interface SettingsPanelProps {
   trackerFlixStatus: 'untested' | 'connecting' | 'connected' | 'failed';
   onTestTrackerFlixConnection: () => void;
 
+  stromServerAddress: string; // e.g. "http://192.168.1.x:5000"
+
   onDisconnect?: () => void;
 }
 
@@ -19,12 +21,13 @@ const NAV_ITEMS = [
   'trackerflix-host-input',
   'trackerflix-connect',
   'backdrop-toggle',
+  'sync-library-btn',
   'disconnect-btn',
 ] as const;
 
 type NavItem = typeof NAV_ITEMS[number];
 
-
+type SyncStatus = 'idle' | 'syncing' | 'success' | 'error';
 
 export default function SettingsPanel({
   tmdbConfig,
@@ -33,11 +36,14 @@ export default function SettingsPanel({
   onUpdateTrackerFlixHost,
   trackerFlixStatus,
   onTestTrackerFlixConnection,
+  stromServerAddress,
   onDisconnect,
 }: SettingsPanelProps) {
   const [focusIdx, setFocusIdx] = useState(0);
   const itemRefs = useRef<Record<string, HTMLElement | null>>({});
   const [hostDraft, setHostDraft] = useState(trackerFlixHost);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
+  const [syncResult, setSyncResult] = useState<{ count: number } | null>(null);
 
   const focusItem = useCallback((idx: number) => {
     const clamped = Math.max(0, Math.min(NAV_ITEMS.length - 1, idx));
@@ -48,8 +54,6 @@ export default function SettingsPanel({
   // ── D-pad keyboard navigation ───────────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      // Only intercept when nothing is explicitly focused inside this panel
-      // (the panel items grab focus themselves via focusItem)
       switch (e.key) {
         case 'ArrowDown':
           e.preventDefault();
@@ -74,6 +78,27 @@ export default function SettingsPanel({
     return () => window.removeEventListener('keydown', handler);
   }, [focusIdx, focusItem]);
 
+  // ── Sync Library handler ─────────────────────────────────────
+  const handleSyncLibrary = useCallback(async () => {
+    if (syncStatus === 'syncing') return;
+    setSyncStatus('syncing');
+    setSyncResult(null);
+    try {
+      const base = stromServerAddress.replace(/\/$/, '');
+      const res = await fetch(`${base}/api/movies`, { signal: AbortSignal.timeout(30_000) });
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      const data = await res.json();
+      const count = Array.isArray(data) ? data.length : (data?.movies?.length ?? 0);
+      setSyncResult({ count });
+      setSyncStatus('success');
+      // Reset to idle after 4 s so user can re-trigger
+      setTimeout(() => setSyncStatus('idle'), 4000);
+    } catch {
+      setSyncStatus('error');
+      setTimeout(() => setSyncStatus('idle'), 4000);
+    }
+  }, [syncStatus, stromServerAddress]);
+
   const showBackdrop = tmdbConfig.showBackdrop ?? true;
 
   // Helper: ref setter
@@ -90,14 +115,12 @@ export default function SettingsPanel({
     <div
       id="apk-settings-panel"
       className="space-y-6 py-6 font-sans"
-      // Allow mouse/touch to set focusIdx too
       onFocus={(e) => {
         const id = e.target.id as NavItem;
         const idx = NAV_ITEMS.indexOf(id);
         if (idx !== -1) setFocusIdx(idx);
       }}
     >
-
 
       {/* ── TRACKERFLIX HOST ─────────────────────────────────── */}
       <section className="bg-zinc-950 border border-zinc-800 rounded-2xl p-6 space-y-4">
@@ -241,6 +264,48 @@ export default function SettingsPanel({
               }`}
             />
           </div>
+        </button>
+      </section>
+
+      {/* ── SYNC LIBRARY ─────────────────────────────────────── */}
+      <section className="bg-zinc-950 border border-zinc-800 rounded-2xl p-6 space-y-4">
+        <div className="flex items-center gap-3 border-b border-zinc-800 pb-4">
+          <div className="bg-orange-500/10 border border-orange-500/30 p-2.5 rounded-xl text-orange-500">
+            <RefreshCw size={18} />
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-zinc-100">Library</h2>
+            <p className="text-xs text-zinc-500">
+              Rescans all library paths on the server. Use this after adding new files without restarting.
+            </p>
+          </div>
+        </div>
+
+        <button
+          id="sync-library-btn"
+          ref={setRef('sync-library-btn')}
+          type="button"
+          disabled={syncStatus === 'syncing'}
+          onClick={handleSyncLibrary}
+          className={`w-full flex items-center justify-center gap-2.5 py-3 px-6 rounded-xl border font-bold text-sm transition-all duration-200 outline-none focus:outline-none ${
+            isFocused('sync-library-btn')
+              ? 'border-orange-500 ring-2 ring-orange-500/30 bg-orange-500/15 text-orange-300'
+              : syncStatus === 'success'
+              ? 'border-emerald-600/50 bg-emerald-500/10 text-emerald-400'
+              : syncStatus === 'error'
+              ? 'border-red-600/50 bg-red-500/10 text-red-400'
+              : 'border-zinc-700 bg-zinc-900/60 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100'
+          } disabled:opacity-50 disabled:cursor-not-allowed`}
+        >
+          {syncStatus === 'syncing' ? (
+            <><Loader2 size={15} className="animate-spin" /> Scanning library…</>
+          ) : syncStatus === 'success' ? (
+            <><CheckCircle2 size={15} /> {syncResult ? `${syncResult.count} files found` : 'Sync complete'}</>
+          ) : syncStatus === 'error' ? (
+            <><XCircle size={15} /> Sync failed — retry?</>
+          ) : (
+            <><RefreshCw size={15} /> Sync Library</>
+          )}
         </button>
       </section>
 
