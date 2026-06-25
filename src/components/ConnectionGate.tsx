@@ -172,17 +172,30 @@ export default function ConnectionGate({ onConnected, targetPlatform }: Connecti
   useEffect(() => {
     const autoConn = localStorage.getItem('strom_remember_connection') === 'true';
     const savedAddr = localStorage.getItem('strom_server_address');
-    if (autoConn && savedAddr) {
+    if (!autoConn || !savedAddr) return;
+
+    let cancelled = false;
+    (async () => {
       setStatus('connecting');
       setStatusMessage('Auto-connecting to saved media node...');
-      const t = setTimeout(() => {
+      const normalized = savedAddr.includes(':') ? savedAddr : `${savedAddr}:5000`;
+      const hit = await probeHost(
+        normalized.split(':')[0],
+        parseInt(normalized.split(':')[1] || '5000'),
+        3000
+      );
+      if (cancelled) return;
+      if (hit) {
         setStatus('success');
         setStatusMessage('Sync Complete! Mounting streams...');
-        const t2 = setTimeout(() => safeOnConnected(savedAddr), 1200);
-        return () => clearTimeout(t2);
-      }, 1500);
-      return () => clearTimeout(t);
-    }
+        setTimeout(() => safeOnConnected(savedAddr), 1200);
+      } else {
+        // Server unreachable — drop back to gate so user can re-link
+        setStatus('idle');
+        setStatusMessage('Saved server unreachable. Please reconnect.');
+      }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   // ── Cleanup poll on unmount ───────────────────────────────────
@@ -252,15 +265,17 @@ export default function ConnectionGate({ onConnected, targetPlatform }: Connecti
       const saved = localStorage.getItem('strom_server_address');
       if (saved) {
         const normalized = saved.includes(':') ? saved : `${saved}:5000`;
-        const savedBase = `http://${normalized}`;
-        setLinkStatus('requesting');
-        setDiscoveryMsg('');
+        setLinkStatus('discovering');
+        setDiscoveryMsg('Checking saved server…');
         const hit = await probeHost(
           normalized.split(':')[0],
           parseInt(normalized.split(':')[1] || '5000'),
           2000
         );
-        if (hit) workingBase = `http://${hit}`;
+        if (hit) {
+          workingBase = `http://${hit}`;
+          setDiscoveryMsg('');
+        }
       }
 
       // ── Step 2: subnet scan if saved address missed or doesn't exist ──
