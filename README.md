@@ -1,5 +1,7 @@
 Changelog: 2026-06-21 Fix: Library not loading on first launch (Android) On first launch, the app failed to display movies and TV series even when library-cache.json was present on the backend. A restart was required before content appeared.
+
 Changelog: 2026-06-24 Fix: Updated ExoPlayer settings for Android TV to improve , navigation, and overall user experience.
+
 Changelog: 2026-06-25 Fix: Updated Added a ConnectionGate handshake process to improve Android TV client initialization and backend connectivity.
 
 
