@@ -182,7 +182,9 @@ export default function App() {
   const [localVideoFile, setLocalVideoFile] = useState<File | null>(null);
 
   // Windows Companion state variables
-  const [companionHost, setCompanionHost] = useState<string>('http://localhost:5000');
+  const [companionHost, setCompanionHost] = useState<string>(
+  localStorage.getItem('plexus_companion_host') || 'http://localhost:5000'
+);
   const [companionStatus, setCompanionStatus] = useState<'untested' | 'connecting' | 'connected' | 'failed'>('untested');
   const [companionScannedMovies, setCompanionScannedMovies] = useState<Movie[]>([]);
 
@@ -322,8 +324,12 @@ export default function App() {
   const [focusRow, setFocusRow] = useState<number>(1);
   const [focusCol, setFocusCol] = useState<number>(0);
 
-  // Load persistence configurations on mount
+  // Load persistence configurations on mount AND whenever the gate closes.
+  // Running on isGateClosed ensures boot() fires with the correct companionHost
+  // after a link-code or manual-IP connection, not just on cold start when the
+  // host isn't in localStorage yet.
   useEffect(() => {
+    if (isGateClosed) return; // gate still open — host not known yet, skip
     const boot = async () => {
       // --- SETTINGS (stay in localStorage — device-specific, not library data) ---
 
@@ -351,9 +357,20 @@ export default function App() {
       if (providerRaw) setPrimaryMetadataProvider(providerRaw as 'tmdb' | 'tvdb');
 
       // 4. Companion host
+      // On first run after linking, onConnected() has already written both
+      // plexus_companion_host and strom_server_address to localStorage before
+      // boot() re-runs (isGateClosed flipped to false). So hostRaw will be set.
       const hostRaw = localStorage.getItem('plexus_companion_host');
-      const activeHost = hostRaw || companionHost;
-      if (hostRaw) setCompanionHost(hostRaw);
+      const gateAddr = localStorage.getItem('strom_server_address');
+      const gateHost = gateAddr ? `http://${gateAddr}` : null;
+      const activeHost = hostRaw || gateHost || companionHost;
+      if (hostRaw) {
+        setCompanionHost(hostRaw);
+      } else if (gateHost) {
+        setCompanionHost(gateHost);
+        // Keep plexus_companion_host in sync so future boots don't need the fallback
+        localStorage.setItem('plexus_companion_host', gateHost);
+      }
 
       // 4b. TrackerFlix host — load and auto-connect
       const tfHostRaw = localStorage.getItem('plexus_trackerflix_host');
@@ -528,7 +545,7 @@ export default function App() {
     };
 
     boot();
-  }, []);
+  }, [isGateClosed]);
 
   const LIBRARY_KEYS = [
     'plexus_companion_movies',
@@ -580,7 +597,39 @@ export default function App() {
 
     const StromPlayer = (window as any).Capacitor?.Plugins?.StromPlayer;
     if (StromPlayer) {
-      StromPlayer.play({ url: streamUrl, title: movie.title, audioTrack, subtitleTrack });
+      // Register a one-shot listener to capture the position when user exits
+      const handler = (event: { positionMs: number; durationMs: number }) => {
+        StromPlayer.removeAllListeners?.('playerClosed');
+        const positionSec = Math.floor(event.positionMs / 1000);
+        const durationSec = event.durationMs > 0 ? Math.floor(event.durationMs / 1000) : 0;
+        // Only save if watched more than 5 seconds and not within last 60s of end
+        const nearEnd = durationSec > 0 && (durationSec - positionSec) < 60;
+        if (positionSec > 5 && !nearEnd) {
+          updateSession({
+            movieId:     movie.id,
+            title:       movie.title,
+            posterPath:  movie.posterPath ?? '',
+            currentTime: positionSec,
+            duration:    durationSec,
+            updatedAt:   Date.now(),
+          });
+        } else if (nearEnd) {
+          // Finished — remove any existing session for this title
+          setPlaybackSessions(prev => {
+            const updated = prev.filter(s => s.movieId !== movie.id);
+            saveLibrary({ plexus_playback_sessions: updated });
+            return updated;
+          });
+        }
+      };
+      StromPlayer.addListener('playerClosed', handler);
+      StromPlayer.play({
+        url:          streamUrl,
+        title:        movie.title,
+        audioTrack,
+        subtitleTrack,
+        startTimeMs:  Math.floor((startTime ?? 0) * 1000),
+      });
     }
   };
 
@@ -2095,9 +2144,15 @@ export default function App() {
   // Handle hardware keyboard interactions and left navigation drawer
   useEffect(() => {
     if (!isTvMode) return;
+    // Record when the app mounted. Any Enter keypress within 300 ms is almost
+    // certainly the stray event that closed the ConnectionGate (link approval
+    // or manual connect button) — ignore it so it doesn't fire into the grid.
+    const mountedAt = Date.now();
 
     const handleHardwareKeyPress = (e: KeyboardEvent) => {
       if (playingMovie) return; // Player has standard custom speed modifiers
+      // Swallow stray Enter that leaks from the ConnectionGate on first mount
+      if (e.key === 'Enter' && Date.now() - mountedAt < 300) return;
       // Never intercept keys when the user is typing in an input, textarea, or contenteditable
       const tag = (e.target as HTMLElement)?.tagName;
       const isEditable = tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable;
@@ -3181,10 +3236,16 @@ export default function App() {
           }}
           onPlayEpisode={(episode: ParsedEpisode, show: Movie) => {
             setSelectedMovie(null);
+            const epLabel = episode.season > 0
+              ? `S${episode.season} E${episode.episode}`
+              : `E${episode.episode}`;
+            const epTitle = `${show.title} — ${epLabel}`;
+            const epMovie = { ...show, localFilePath: episode.filePath, title: epTitle, id: episode.id ?? show.id };
+            const session = playbackSessions.find(s => s.movieId === epMovie.id);
             if (Capacitor.isNativePlatform()) {
-              playNative({ ...show, localFilePath: episode.filePath });
+              playNative(epMovie, session?.currentTime ?? 0);
             } else {
-              playWithMPV({ ...show, localFilePath: episode.filePath });
+              playWithMPV(epMovie, session?.currentTime ?? 0);
             }
           }}
           onClose={() => setSelectedMovie(null)}
@@ -3205,10 +3266,16 @@ export default function App() {
             targetPlatform={targetPlatform}
             onPlayEpisode={(episode, show) => {
               setEpisodeSelectShow(null);
+              const epLabel = episode.season > 0
+                ? `S${episode.season} E${episode.episode}`
+                : `E${episode.episode}`;
+              const epTitle = `${show.title} — ${epLabel}`;
+              const epMovie = { ...show, localFilePath: episode.filePath, title: epTitle, id: episode.id ?? show.id };
+              const session = playbackSessions.find(s => s.movieId === epMovie.id);
               if (Capacitor.isNativePlatform()) {
-                playNative({ ...show, localFilePath: episode.filePath });
+                playNative(epMovie, session?.currentTime ?? 0);
               } else {
-                playWithMPV({ ...show, localFilePath: episode.filePath });
+                playWithMPV(epMovie, session?.currentTime ?? 0);
               }
             }}
             onClose={() => setEpisodeSelectShow(null)}
