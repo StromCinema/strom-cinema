@@ -105,6 +105,11 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// ─── PING (LAN discovery — TV subnet scanner hits this to identify the server) ─
+app.get('/api/ping', (req, res) => {
+  res.json({ service: 'strom', port: PORT });
+});
+
 // ─── PATHS (legacy + live update endpoint) ────────────────────────────────────
 // Accepts both the old string[] (from APK frontend) and the new
 // {path, category}[] objects (from setup.html). Always writes to plexus-config.json.
@@ -553,6 +558,281 @@ app.delete('/api/library', (req, res) => {
     console.error('[Plexus] Failed to delete library cache:', err.message);
     res.status(500).json({ error: err.message });
   }
+});
+
+// ─── TV LINK PAIRING ──────────────────────────────────────────────────────────
+// Plex-style code pairing: TV requests a code, user visits /link on PC browser,
+// types the code, TV gets the server address back automatically.
+//
+// Flow:
+//   1. TV  → POST /api/link/request        → { code: "482916" }
+//   2. TV  → GET  /api/link/poll?code=…    → { status: "pending" | "approved", host }
+//   3. PC  → GET  /link                    → HTML pairing page
+//   4. PC  → POST /api/link/approve        → { code, approved: true }
+
+const os = require('os');
+
+// In-memory store: code → { approved, createdAt }
+const linkCodes = new Map();
+const LINK_CODE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+// Helper: get the primary local IPv4 address of this machine
+function getLocalIP() {
+  const interfaces = os.networkInterfaces();
+  let fallback = '127.0.0.1';
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        // Prefer real LAN ranges over VPN / virtual adapter addresses
+        if (iface.address.startsWith('192.168.') || iface.address.startsWith('10.')) {
+          return iface.address;
+        }
+        // Keep first non-internal address as fallback in case no LAN range matches
+        if (fallback === '127.0.0.1') fallback = iface.address;
+      }
+    }
+  }
+  return fallback;
+}
+
+// Cleanup expired codes every minute
+setInterval(() => {
+  const now = Date.now();
+  for (const [code, entry] of linkCodes.entries()) {
+    if (now - entry.createdAt > LINK_CODE_TTL_MS) {
+      linkCodes.delete(code);
+    }
+  }
+}, 60_000);
+
+// POST /api/link/request — TV calls this to get a fresh pairing code
+app.post('/api/link/request', (req, res) => {
+  // Generate a 6-digit numeric code
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  linkCodes.set(code, { approved: false, createdAt: Date.now() });
+  console.log(`[Plexus Link] New pairing code issued: ${code}`);
+  res.json({ code, expiresInSeconds: 300 });
+});
+
+// GET /api/link/poll?code=XXXXXX — TV polls this until approved
+app.get('/api/link/poll', (req, res) => {
+  const { code } = req.query;
+  if (!code || !linkCodes.has(code)) {
+    return res.status(404).json({ status: 'expired' });
+  }
+  const entry = linkCodes.get(code);
+  if (Date.now() - entry.createdAt > LINK_CODE_TTL_MS) {
+    linkCodes.delete(code);
+    return res.status(410).json({ status: 'expired' });
+  }
+  if (entry.approved) {
+    linkCodes.delete(code); // single-use
+    const host = `${getLocalIP()}:${PORT}`;
+    console.log(`[Plexus Link] Code ${code} approved — sending host ${host}`);
+    return res.json({ status: 'approved', host });
+  }
+  res.json({ status: 'pending' });
+});
+
+// POST /api/link/approve — PC browser submits the code
+app.post('/api/link/approve', (req, res) => {
+  const { code } = req.body;
+  if (!code || !linkCodes.has(code)) {
+    return res.status(404).json({ ok: false, error: 'Code not found or expired' });
+  }
+  const entry = linkCodes.get(code);
+  if (Date.now() - entry.createdAt > LINK_CODE_TTL_MS) {
+    linkCodes.delete(code);
+    return res.status(410).json({ ok: false, error: 'Code expired' });
+  }
+  entry.approved = true;
+  console.log(`[Plexus Link] Code ${code} approved via browser`);
+  res.json({ ok: true });
+});
+
+// GET /link — PC browser pairing page
+app.get('/link', (req, res) => {
+  const localIP = getLocalIP();
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Strøm — Link TV</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      background: #030303;
+      color: #f4f4f5;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      width: 100%;
+      max-width: 420px;
+      background: #0f0f0f;
+      border: 1px solid #27272a;
+      border-radius: 20px;
+      padding: 36px 32px;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.8);
+    }
+    .logo {
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 2.2rem;
+      font-weight: 700;
+      text-align: center;
+      margin-bottom: 28px;
+      letter-spacing: -0.02em;
+    }
+    .logo .o { color: #f97316; text-shadow: 0 0 18px rgba(249,115,22,0.8); }
+    h1 { font-size: 1rem; font-weight: 700; color: #e4e4e7; margin-bottom: 6px; }
+    p  { font-size: 0.78rem; color: #71717a; margin-bottom: 24px; line-height: 1.5; }
+    label {
+      display: block;
+      font-size: 0.68rem;
+      font-family: monospace;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #71717a;
+      margin-bottom: 6px;
+    }
+    input[type=text] {
+      width: 100%;
+      background: #18181b;
+      border: 1px solid #3f3f46;
+      border-radius: 12px;
+      padding: 12px 16px;
+      font-size: 1.6rem;
+      font-family: monospace;
+      letter-spacing: 0.3em;
+      color: #fff;
+      outline: none;
+      text-align: center;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      margin-bottom: 16px;
+    }
+    input[type=text]:focus {
+      border-color: #f97316;
+      box-shadow: 0 0 0 3px rgba(249,115,22,0.2);
+    }
+    button {
+      width: 100%;
+      background: #f97316;
+      color: #000;
+      border: none;
+      border-radius: 12px;
+      padding: 13px;
+      font-size: 0.82rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+    button:hover  { background: #fb923c; }
+    button:active { transform: scale(0.98); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .status {
+      margin-top: 18px;
+      text-align: center;
+      font-size: 0.75rem;
+      font-family: monospace;
+      min-height: 20px;
+      transition: color 0.3s;
+    }
+    .status.ok      { color: #34d399; }
+    .status.err     { color: #f87171; }
+    .status.pending { color: #a1a1aa; }
+    .divider {
+      border: none;
+      border-top: 1px solid #27272a;
+      margin: 24px 0;
+    }
+    .hint {
+      font-size: 0.7rem;
+      color: #52525b;
+      text-align: center;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">Str<span class="o">ø</span>m</div>
+    <h1>Link your TV</h1>
+    <p>Enter the 6-digit code shown on your TV screen to connect it to this server.</p>
+
+    <label>Pairing Code</label>
+    <input
+      id="code-input"
+      type="text"
+      maxlength="6"
+      placeholder="000000"
+      autocomplete="off"
+      inputmode="numeric"
+      autofocus
+    />
+    <button id="approve-btn" onclick="approve()">Link TV</button>
+    <div id="status" class="status pending"></div>
+
+    <hr class="divider" />
+    <div class="hint">Server running at ${localIP}:${PORT}</div>
+  </div>
+
+  <script>
+    async function approve() {
+      const code = document.getElementById('code-input').value.trim();
+      const btn  = document.getElementById('approve-btn');
+      const statusEl = document.getElementById('status');
+
+      if (code.length !== 6) {
+        statusEl.className = 'status err';
+        statusEl.textContent = 'Please enter the full 6-digit code.';
+        return;
+      }
+
+      btn.disabled = true;
+      statusEl.className = 'status pending';
+      statusEl.textContent = 'Linking…';
+
+      try {
+        const res  = await fetch('/api/link/approve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          statusEl.className = 'status ok';
+          statusEl.textContent = '✓ TV linked successfully! Your TV will connect momentarily.';
+        } else {
+          statusEl.className = 'status err';
+          statusEl.textContent = data.error || 'Code not found or expired. Try again.';
+          btn.disabled = false;
+        }
+      } catch {
+        statusEl.className = 'status err';
+        statusEl.textContent = 'Could not reach server. Are you on the same network?';
+        btn.disabled = false;
+      }
+    }
+
+    // Allow Enter key to submit
+    document.getElementById('code-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') approve();
+    });
+
+    // Auto-format: digits only
+    document.getElementById('code-input').addEventListener('input', e => {
+      e.target.value = e.target.value.replace(/\\D/g, '').slice(0, 6);
+    });
+  </script>
+</body>
+</html>`);
 });
 
 // ─── STATIC + SPA FALLBACK ────────────────────────────────────────────────────

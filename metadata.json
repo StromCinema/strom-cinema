@@ -1,0 +1,6 @@
+{
+  "name": "Strøm",
+  "description": "A Plex-inspired cinematic media manager and player supporting TMDB metadata matching, local movie scanning, remote-friendly D-Pad navigation, and custom subtitle options.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
