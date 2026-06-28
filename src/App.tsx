@@ -119,6 +119,25 @@ function VerticalSentinel({ catKey, catLabel, exhausted, loading, onVisible }: S
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Reads plexus_movie_overrides from localStorage and re-applies user edits
+ *  (title, posterPath) onto a movie after TMDB enrichment, so manual overrides
+ *  always survive rescans. Keyed by localFilePath to avoid server ID collisions. */
+function applyLocalOverrides(movie: Movie): Movie {
+  try {
+    const all: Record<string, { title?: string; posterPath?: string }> =
+      JSON.parse(localStorage.getItem('plexus_movie_overrides') || '{}');
+    const ov = all[movie.localFilePath || movie.id];
+    if (!ov) return movie;
+    return {
+      ...movie,
+      ...(ov.title      ? { title:      ov.title }      : {}),
+      ...(ov.posterPath ? { posterPath: ov.posterPath } : {}),
+    };
+  } catch {
+    return movie;
+  }
+}
+
 export default function App() {
   // --- CORE STATE ---
   const [recentlyAdded, setRecentlyAdded] = useState<Movie[]>([]);
@@ -463,78 +482,102 @@ export default function App() {
       // 8. Imported files
       if (lib.plexus_imported_files) setImportedFiles(lib.plexus_imported_files);
 
-      // 9. Companion movies — show cached data immediately, re-enrich if stale
+      // 9. Companion movies — show cached data immediately as optimistic UI,
+      // then always do a fresh fetch from /api/movies to catch additions/removals.
+      // We never re-enrich the stale cache — that would miss deleted files.
       if (lib.plexus_companion_movies && lib.plexus_companion_movies.length > 0) {
         const parsed: Movie[] = lib.plexus_companion_movies;
-        const needsReEnrich = parsed.some(m => m.posterPath?.includes('unsplash.com'));
-
         setCompanionScannedMovies(parsed);
         const sorted = [...parsed].sort((a, b) => (b.addedAt ?? 0) - (a.addedAt ?? 0)).slice(0, 10);
         setRecentlyAdded(sorted);
         if (parsed.length > 0) setCurrentHeroMovie(parsed[0]);
+      }
 
-        if (needsReEnrich) {
-          const rawTmdb = localStorage.getItem('plexus_tmdb_settings');
-          const rawTvdb = localStorage.getItem('plexus_tvdb_settings');
-          const rawProvider = localStorage.getItem('plexus_primary_metadata_provider');
-          const lsTmdb: TMDBConfig = rawTmdb ? JSON.parse(rawTmdb) : { apiKey: '', isEnabled: false, language: 'en-US' };
-          const lsTvdb: TVDBConfig = rawTvdb ? JSON.parse(rawTvdb) : { apiKey: '', isEnabled: false };
-          const lsProvider = (rawProvider as 'tmdb' | 'tvdb') || 'tmdb';
+      // Always rescan from the server in the background so the catalog reflects
+      // the actual files on disk (handles added AND removed files).
+      if (activeHost) {
+        setTimeout(async () => {
+          try {
+            const moviesRes = await fetch(`${activeHost}/api/movies`);
+            if (!moviesRes.ok) return;
+            const data = await moviesRes.json();
+            if (!data?.movies?.length) return;
 
-          setTimeout(async () => {
-            const rawFmt = parsed.map(m => ({
-              id: m.id,
-              fileName: m.localFilePath ? m.localFilePath.split(/[/\\]/).pop() || m.title : m.title,
-              filePath: m.localFilePath, fileSize: m.fileSize, fileType: m.fileType,
-              streamUrl: m.trailerUrl, addedAt: m.addedAt,
-            }));
-            const enriched = await (async () => {
-              let tvdbToken: string | null = null;
-              if (lsTvdb.isEnabled && lsTvdb.apiKey) tvdbToken = await getTVDBToken(lsTvdb.apiKey);
-              const results: Movie[] = [];
-              for (const m of rawFmt) {
-                const isTV = isTVEpisode(m.fileName || '');
-                let searchTitle: string; let searchYear: string | null;
-                if (isTV) { const tvInfo = parseTVFilename(m.fileName || ''); searchTitle = tvInfo.title; searchYear = null; }
-                else { const p = parseMovieFilename(m.fileName || m.id || ''); searchTitle = p.title; searchYear = p.year; }
-                const parentDir = m.filePath ? m.filePath.replace(/[/\\][^/\\]+$/, '') : '';
-                const base: Movie = {
-                  id: m.id || `local-${Math.random()}`, title: searchTitle || m.id || 'Unknown',
-                  backdropPath: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=1600&q=80',
-                  posterPath: 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?auto=format&fit=crop&w=500&q=80',
-                  overview: `Local file: ${m.filePath || m.id}`, rating: 0,
-                  releaseDate: searchYear ? `${searchYear}-01-01` : new Date().toISOString().split('T')[0],
-                  runtime: isTV ? 45 : 120, genres: isTV ? ['TV Series'] : ['Local Video'],
-                  isLocal: true, localFilePath: m.filePath, fileSize: m.fileSize, fileType: m.fileType,
-                  trailerUrl: m.streamUrl, addedAt: m.addedAt ?? 0, sourcePath: parentDir,
-                };
-                let enriched2: Partial<Movie> | null = null;
-                if (lsProvider === 'tmdb' && lsTmdb.isEnabled && lsTmdb.apiKey) {
-                  enriched2 = await enrichFromTMDB(searchTitle, searchYear, lsTmdb.apiKey, isTV);
-                  if (!enriched2 && lsTvdb.isEnabled && tvdbToken) enriched2 = await enrichFromTVDB(searchTitle, searchYear, tvdbToken);
-                } else if (lsProvider === 'tvdb' && lsTvdb.isEnabled && tvdbToken) {
-                  enriched2 = await enrichFromTVDB(searchTitle, searchYear, tvdbToken);
-                  if (!enriched2 && lsTmdb.isEnabled && lsTmdb.apiKey) enriched2 = await enrichFromTMDB(searchTitle, searchYear, lsTmdb.apiKey, isTV);
-                } else if (lsTmdb.isEnabled && lsTmdb.apiKey) {
-                  enriched2 = await enrichFromTMDB(searchTitle, searchYear, lsTmdb.apiKey, isTV);
-                }
-                if (enriched2) {
-                  if (isTV) { const tvInfo = parseTVFilename(m.fileName || ''); base.tagline = `S${String(tvInfo.season).padStart(2,'0')}E${String(tvInfo.episode).padStart(2,'0')} · Local TV Episode`; }
-                  Object.assign(base, { ...enriched2, isLocal: true, localFilePath: m.filePath, fileSize: m.fileSize, fileType: m.fileType, trailerUrl: m.streamUrl, addedAt: m.addedAt ?? 0, sourcePath: parentDir, id: base.id });
-                }
-                results.push(base);
+            const rawTmdb = localStorage.getItem('plexus_tmdb_settings');
+            const rawTvdb = localStorage.getItem('plexus_tvdb_settings');
+            const rawProvider = localStorage.getItem('plexus_primary_metadata_provider');
+            const lsTmdb: TMDBConfig = rawTmdb ? JSON.parse(rawTmdb) : { apiKey: '', isEnabled: false, language: 'en-US' };
+            const lsTvdb: TVDBConfig = rawTvdb ? JSON.parse(rawTvdb) : { apiKey: '', isEnabled: false };
+            const lsProvider = (rawProvider as 'tmdb' | 'tvdb') || 'tmdb';
+
+            let tvdbToken: string | null = null;
+            if (lsTvdb.isEnabled && lsTvdb.apiKey) tvdbToken = await getTVDBToken(lsTvdb.apiKey);
+
+            // Load the already-cached enriched movies so we can reuse metadata
+            // for files that haven't changed — skipping redundant TMDB calls.
+            const existingCache: Movie[] = lib.plexus_companion_movies || [];
+            const cacheByPath = new Map<string, Movie>(
+              existingCache.map(m => [((m.localFilePath || '') as string).toUpperCase(), m])
+            );
+
+            const results: Movie[] = [];
+            for (const m of data.movies) {
+              const cachedEntry = cacheByPath.get((m.filePath || '').toUpperCase());
+              const hasTmdbPoster = cachedEntry?.posterPath && !cachedEntry.posterPath.includes('unsplash.com');
+
+              // Reuse cached enriched data if the file path matches and poster is real
+              if (cachedEntry && hasTmdbPoster) {
+                // Keep the cached enriched entry but refresh stream URL (host may have changed)
+                results.push(applyLocalOverrides({ ...cachedEntry, trailerUrl: m.streamUrl }));
+                continue;
               }
-              return results;
-            })();
-            setCompanionScannedMovies(enriched);
+
+              // Otherwise build fresh and enrich
+              const isTV = isTVEpisode(m.fileName || '');
+              let searchTitle: string; let searchYear: string | null;
+              if (isTV) { const tvInfo = parseTVFilename(m.fileName || ''); searchTitle = tvInfo.title; searchYear = null; }
+              else { const p = parseMovieFilename(m.fileName || m.title || ''); searchTitle = p.title; searchYear = p.year; }
+              const parentDir = m.filePath ? m.filePath.replace(/[/\\][^/\\]+$/, '') : '';
+              const base: Movie = {
+                id: m.id || `local-${Math.random()}`,
+                title: searchTitle || m.title || m.fileName || 'Unknown',
+                backdropPath: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=1600&q=80',
+                posterPath: 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?auto=format&fit=crop&w=500&q=80',
+                overview: `Local file: ${m.filePath || m.fileName}`, rating: 0,
+                releaseDate: searchYear ? `${searchYear}-01-01` : new Date().toISOString().split('T')[0],
+                runtime: isTV ? 45 : 120, genres: isTV ? ['TV Series'] : ['Local Video'],
+                isLocal: true, localFilePath: m.filePath, fileSize: m.fileSize, fileType: m.fileType,
+                trailerUrl: m.streamUrl, addedAt: m.addedAt ?? 0, sourcePath: parentDir,
+              };
+              let enriched2: Partial<Movie> | null = null;
+              if (lsProvider === 'tmdb' && lsTmdb.isEnabled && lsTmdb.apiKey) {
+                enriched2 = await enrichFromTMDB(searchTitle, searchYear, lsTmdb.apiKey, isTV);
+                if (!enriched2 && lsTvdb.isEnabled && tvdbToken) enriched2 = await enrichFromTVDB(searchTitle, searchYear, tvdbToken);
+              } else if (lsProvider === 'tvdb' && lsTvdb.isEnabled && tvdbToken) {
+                enriched2 = await enrichFromTVDB(searchTitle, searchYear, tvdbToken);
+                if (!enriched2 && lsTmdb.isEnabled && lsTmdb.apiKey) enriched2 = await enrichFromTMDB(searchTitle, searchYear, lsTmdb.apiKey, isTV);
+              } else if (lsTmdb.isEnabled && lsTmdb.apiKey) {
+                enriched2 = await enrichFromTMDB(searchTitle, searchYear, lsTmdb.apiKey, isTV);
+              }
+              if (enriched2) {
+                if (isTV) { const tvInfo = parseTVFilename(m.fileName || ''); base.tagline = `S${String(tvInfo.season).padStart(2,'0')}E${String(tvInfo.episode).padStart(2,'0')} · Local TV Episode`; }
+                Object.assign(base, { ...enriched2, isLocal: true, localFilePath: m.filePath, fileSize: m.fileSize, fileType: m.fileType, trailerUrl: m.streamUrl, addedAt: m.addedAt ?? 0, sourcePath: parentDir, id: base.id });
+              }
+              results.push(applyLocalOverrides(base));
+            }
+
+            setCompanionScannedMovies(results);
             await fetch(`${activeHost}/api/library`, {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ plexus_companion_movies: enriched })
+              body: JSON.stringify({ plexus_companion_movies: results })
             }).catch(() => {});
-            const sortedNew = [...enriched].sort((a, b) => (b.addedAt ?? 0) - (a.addedAt ?? 0)).slice(0, 10);
+            const sortedNew = [...results].sort((a, b) => (b.addedAt ?? 0) - (a.addedAt ?? 0)).slice(0, 10);
             setRecentlyAdded(sortedNew);
-          }, 500);
-        }
+            if (results.length > 0) setCurrentHeroMovie(results[0]);
+          } catch (err) {
+            console.warn('[Plexus] Boot background rescan failed:', err);
+          }
+        }, 800);
       }
       // Migration: nuke any leftover localStorage library keys now that the
       // file is the source of truth. Safe to run every boot — removeItem is a no-op
@@ -1299,7 +1342,7 @@ export default function App() {
         });
       }
 
-      results.push(base);
+      results.push(applyLocalOverrides(base));
     }
 
     return results;
@@ -1447,7 +1490,7 @@ export default function App() {
                       }
                       Object.assign(base, { ...enriched2, isLocal: true, localFilePath: m.filePath, fileSize: m.fileSize, fileType: m.fileType, trailerUrl: m.streamUrl, addedAt: m.addedAt ?? 0, sourcePath: parentDir, id: base.id });
                     }
-                    results.push(base);
+                    results.push(applyLocalOverrides(base));
                   }
                   return results;
                 })();
@@ -1483,11 +1526,26 @@ export default function App() {
     saveLibrary({ plexus_library_paths: updated });
   };
 
-  // Handle removal of pathways
+  // Handle removal of pathways — also prunes companion movies that belonged to the path
   const removeLibraryPath = (id: string) => {
+    const removed = libraryPaths.find(p => p.id === id);
     const updated = libraryPaths.filter((p) => p.id !== id);
     setLibraryPaths(updated);
     saveLibrary({ plexus_library_paths: updated });
+
+    if (removed) {
+      const norm = (p?: string) =>
+        (p || '').toUpperCase().replace(/[/\\]+/g, '/').replace(/\/$/, '');
+      const pathNorm = norm(removed.path);
+      setCompanionScannedMovies(prev => {
+        const pruned = prev.filter(m =>
+          !norm(m.localFilePath).startsWith(pathNorm) &&
+          !norm(m.sourcePath).startsWith(pathNorm)
+        );
+        saveLibrary({ plexus_companion_movies: pruned });
+        return pruned;
+      });
+    }
   };
 
   // --- INTERACTIVE MEDIA SCANNER MULTIPLEXER ---
@@ -1501,16 +1559,17 @@ export default function App() {
 
     logLine(`Target scanning pathways: [${libraryPaths.map(p => p.path).join(' | ')}]`);
 
-    // POST paths to companion server
-    const pathStrings = libraryPaths.map(p => p.path);
+    // POST paths to companion server — send full {path, category} objects so
+    // categories are preserved on the server side (plain strings default to 'Movies').
+    const pathObjects = libraryPaths.map(p => ({ path: p.path, category: p.category || 'Movies' }));
     try {
       const pathsRes = await fetch(`${companionHost}/api/paths`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paths: pathStrings })
+        body: JSON.stringify({ paths: pathObjects })
       });
       if (!pathsRes.ok) throw new Error(`HTTP ${pathsRes.status}`);
-      logLine(`Paths registered with companion server: ${pathStrings.join(', ')}`);
+      logLine(`Paths registered with companion server: ${pathObjects.map(p => `${p.path} [${p.category}]`).join(', ')}`);
     } catch (err: any) {
       logLine(`ERROR: Could not reach companion server at ${companionHost}/api/paths`);
       logLine(`Make sure 'node plexus-server.cjs' is running on the host machine.`);
