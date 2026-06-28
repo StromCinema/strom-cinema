@@ -6,6 +6,22 @@ Changelog:
 
 2026-06-25 Fix: Added a ConnectionGate handshake process to improve Android TV client initialization and backend connectivity.
 
+2026-06-25 Fix: Added a ConnectionGate handshake process to improve Android TV client initialization and backend connectivity.
+
+2026-06-28 NEW: Movie Editing & Poster ManagementMovies in your local library can now be manually edited directly from the UI.
+
+What you can do:
+- Rename any movie title with a local override
+- Replace the poster with a custom image via URL or file upload
+- Browse and select from all available TMDB posters for a title, sorted by language and community rating
+- Reset any movie back to its original TMDB metadata at any time
+
+How overrides work:
+Edits are stored locally and keyed by file path, so they are unique per file
+and survive library rescans, server restarts, and metadata re-enrichment.
+TMDB data is always fetched fresh in the background, but your manual edits
+always take priority over the result
+
 
 
 
@@ -62,6 +78,7 @@ If it fails: check the PC firewall allows inbound traffic on port 5000, and conf
 <img width="2400" height="1248" alt="Screenshot 2026-06-18 223753" src="https://github.com/user-attachments/assets/e689a102-7ac8-402d-9364-de1c68072870" />
 <img width="2243" height="1253" alt="Screenshot 2026-06-18 223734" src="https://github.com/user-attachments/assets/e441d0da-7b53-422e-8cc0-5d4797450c46" />
 <img width="2242" height="1240" alt="Screenshot 2026-06-18 223712" src="https://github.com/user-attachments/assets/9ca3302c-68ec-433d-bebe-c3aa1b6e361f" />
+<img width="638" height="406" alt="image" src="https://github.com/user-attachments/assets/07628519-015d-4778-8f36-25d3ee0c3b1f" />
 
 
 
