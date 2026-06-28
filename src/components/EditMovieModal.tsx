@@ -1,5 +1,5 @@
-import React, { useRef, useState } from 'react';
-import { X, Pencil, ImagePlus, RotateCcw, Check, Upload, Link } from 'lucide-react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
+import { X, Pencil, ImagePlus, RotateCcw, Check, Upload, Link, Search, Loader2, ChevronLeft, ChevronRight as ChevronRightIcon } from 'lucide-react';
 import { Movie } from '../types';
 
 // ── Persistence helpers ────────────────────────────────────────────────────
@@ -8,6 +8,12 @@ const STORAGE_KEY = 'plexus_movie_overrides';
 export interface MovieOverride {
   title?: string;
   posterPath?: string;
+}
+
+/** Stable unique key for a movie — prefers localFilePath over id to avoid
+ *  server-side ID collisions when multiple files share the same path prefix. */
+function overrideKey(movie: { id: string; localFilePath?: string }): string {
+  return movie.localFilePath || movie.id;
 }
 
 export function loadOverrides(): Record<string, MovieOverride> {
@@ -33,34 +39,135 @@ export function clearOverride(movieId: string) {
 /** Apply any saved overrides to a Movie object before rendering */
 export function applyOverrides(movie: Movie): Movie {
   const all = loadOverrides();
-  const ov = all[movie.id];
+  const ov = all[overrideKey(movie)];
   if (!ov) return movie;
   return {
     ...movie,
-    ...(ov.title     ? { title:      ov.title }     : {}),
+    ...(ov.title      ? { title:      ov.title }      : {}),
     ...(ov.posterPath ? { posterPath: ov.posterPath } : {}),
   };
 }
 // ──────────────────────────────────────────────────────────────────────────
 
+interface TmdbPosterResult {
+  file_path: string;
+  vote_average: number;
+  vote_count: number;
+  width: number;
+  height: number;
+  iso_639_1: string | null;
+}
+
 interface EditMovieModalProps {
   movie: Movie;
   onSave: (updated: Partial<Movie>) => void;
   onClose: () => void;
+  /** Pass tmdbConfig.apiKey from App so the TMDB browse tab can fetch posters */
+  tmdbApiKey?: string;
 }
 
-type PosterTab = 'url' | 'upload';
+type PosterTab = 'tmdb' | 'url' | 'upload';
 
-export default function EditMovieModal({ movie, onSave, onClose }: EditMovieModalProps) {
-  const existing = loadOverrides()[movie.id] ?? {};
+const TMDB_IMG = 'https://image.tmdb.org/t/p/';
 
-  const [title, setTitle]             = useState(existing.title     ?? movie.title);
-  const [posterUrl, setPosterUrl]     = useState(existing.posterPath ?? movie.posterPath);
-  const [posterTab, setPosterTab]     = useState<PosterTab>('url');
-  const [urlDraft, setUrlDraft]       = useState(existing.posterPath ?? '');
+export default function EditMovieModal({ movie, onSave, onClose, tmdbApiKey }: EditMovieModalProps) {
+  const key = overrideKey(movie);
+  const existing = loadOverrides()[key] ?? {};
+
+  const [title, setTitle]               = useState(existing.title     ?? movie.title);
+  const [posterUrl, setPosterUrl]       = useState(existing.posterPath ?? movie.posterPath ?? '');
+  const [posterTab, setPosterTab]       = useState<PosterTab>(tmdbApiKey ? 'tmdb' : 'url');
+  const [urlDraft, setUrlDraft]         = useState(existing.posterPath ?? '');
   const [previewError, setPreviewError] = useState(false);
-  const [saved, setSaved]             = useState(false);
-  const fileInputRef                  = useRef<HTMLInputElement>(null);
+  const [saved, setSaved]               = useState(false);
+  const fileInputRef                    = useRef<HTMLInputElement>(null);
+
+  // ── TMDB browse state ─────────────────────────────────────────────────
+  const [tmdbQuery, setTmdbQuery]           = useState(existing.title ?? movie.title ?? '');
+  const [tmdbPosters, setTmdbPosters]       = useState<TmdbPosterResult[]>([]);
+  const [tmdbStatus, setTmdbStatus]         = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
+  const [tmdbPage, setTmdbPage]             = useState(0);   // index into paged chunks of 6
+  const [selectedTmdbPath, setSelectedTmdbPath] = useState<string | null>(null);
+
+  const POSTERS_PER_PAGE = 6;
+
+  // Auto-search on mount when TMDB tab is active and key is available
+  useEffect(() => {
+    if (posterTab === 'tmdb' && tmdbApiKey && tmdbStatus === 'idle') {
+      fetchTmdbPosters(tmdbQuery);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posterTab]);
+
+  const fetchTmdbPosters = useCallback(async (query: string) => {
+    if (!tmdbApiKey || !query.trim()) return;
+    setTmdbStatus('loading');
+    setTmdbPosters([]);
+    setTmdbPage(0);
+    setSelectedTmdbPath(null);
+    try {
+      const isV4 = tmdbApiKey.trim().startsWith('eyJ');
+      const headers: Record<string, string> = isV4
+        ? { Authorization: `Bearer ${tmdbApiKey.trim()}` }
+        : {};
+
+      // 1. Search for the movie/TV show to get its TMDB id
+      const isTV = (movie.genres ?? []).some(g =>
+        g.toLowerCase().includes('tv') || g.toLowerCase().includes('series')
+      );
+      const searchType = isTV ? 'tv' : 'movie';
+      const searchUrl = isV4
+        ? `https://api.themoviedb.org/3/search/${searchType}?query=${encodeURIComponent(query.trim())}&language=en-US&page=1`
+        : `https://api.themoviedb.org/3/search/${searchType}?api_key=${tmdbApiKey}&query=${encodeURIComponent(query.trim())}&language=en-US&page=1`;
+
+      const searchRes = await fetch(searchUrl, { headers });
+      if (!searchRes.ok) throw new Error(`Search failed: ${searchRes.status}`);
+      const searchData = await searchRes.json();
+      const firstResult = (searchData.results ?? [])[0];
+
+      if (!firstResult) {
+        setTmdbStatus('done');
+        return;
+      }
+
+      // 2. Fetch all poster images for that title
+      const imagesUrl = isV4
+        ? `https://api.themoviedb.org/3/${searchType}/${firstResult.id}/images`
+        : `https://api.themoviedb.org/3/${searchType}/${firstResult.id}/images?api_key=${tmdbApiKey}`;
+
+      const imagesRes = await fetch(imagesUrl, { headers });
+      if (!imagesRes.ok) throw new Error(`Images fetch failed: ${imagesRes.status}`);
+      const imagesData = await imagesRes.json();
+
+      // Sort: language-matched first, then by vote_average desc
+      const allPosters: TmdbPosterResult[] = (imagesData.posters ?? []);
+      allPosters.sort((a, b) => {
+        const aEn = a.iso_639_1 === 'en' ? 1 : 0;
+        const bEn = b.iso_639_1 === 'en' ? 1 : 0;
+        if (bEn !== aEn) return bEn - aEn;
+        return b.vote_average - a.vote_average;
+      });
+
+      setTmdbPosters(allPosters);
+      setTmdbStatus('done');
+    } catch (err) {
+      console.error('[EditMovieModal] TMDB poster fetch failed:', err);
+      setTmdbStatus('error');
+    }
+  }, [tmdbApiKey, movie.genres]);
+
+  const applyTmdbPoster = (filePath: string) => {
+    const full = `${TMDB_IMG}w500${filePath}`;
+    setSelectedTmdbPath(filePath);
+    setPosterUrl(full);
+    setPreviewError(false);
+  };
+
+  const totalTmdbPages = Math.ceil(tmdbPosters.length / POSTERS_PER_PAGE);
+  const visiblePosters = tmdbPosters.slice(
+    tmdbPage * POSTERS_PER_PAGE,
+    (tmdbPage + 1) * POSTERS_PER_PAGE
+  );
 
   // ── Poster upload → data URL ──────────────────────────────────────────
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -89,7 +196,7 @@ export default function EditMovieModal({ movie, onSave, onClose }: EditMovieModa
     if (title.trim() && title.trim() !== movie.title) override.title = title.trim();
     if (posterUrl && posterUrl !== movie.posterPath)   override.posterPath = posterUrl;
 
-    saveOverride(movie.id, override);
+    saveOverride(key, override);
     onSave({
       title:      override.title      ?? movie.title,
       posterPath: override.posterPath ?? movie.posterPath,
@@ -100,19 +207,26 @@ export default function EditMovieModal({ movie, onSave, onClose }: EditMovieModa
 
   // ── Reset to originals ────────────────────────────────────────────────
   const handleReset = () => {
-    clearOverride(movie.id);
+    clearOverride(key);
     setTitle(movie.title);
-    setPosterUrl(movie.posterPath);
+    setPosterUrl(movie.posterPath ?? '');
     setUrlDraft('');
     setPreviewError(false);
+    setSelectedTmdbPath(null);
     onSave({ title: movie.title, posterPath: movie.posterPath });
   };
 
   const isDirty =
     title.trim() !== (existing.title ?? movie.title) ||
-    posterUrl    !== (existing.posterPath ?? movie.posterPath);
+    posterUrl    !== (existing.posterPath ?? movie.posterPath ?? '');
 
   const hasOverride = !!(existing.title || existing.posterPath);
+
+  const tabs: { id: PosterTab; label: string; icon: React.ReactNode }[] = [
+    ...(tmdbApiKey ? [{ id: 'tmdb' as PosterTab, label: 'TMDB', icon: <Search size={10} /> }] : []),
+    { id: 'url',    label: 'URL',    icon: <Link size={10} /> },
+    { id: 'upload', label: 'Upload', icon: <Upload size={10} /> },
+  ];
 
   return (
     <div
@@ -120,7 +234,7 @@ export default function EditMovieModal({ movie, onSave, onClose }: EditMovieModa
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-lg bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden"
+        className="relative w-full max-w-xl bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         {/* ── Header ───────────────────────────────────────────────────── */}
@@ -163,7 +277,6 @@ export default function EditMovieModal({ movie, onSave, onClose }: EditMovieModa
                 </div>
               )}
             </div>
-            {/* Reset button */}
             {hasOverride && (
               <button
                 onClick={handleReset}
@@ -175,7 +288,7 @@ export default function EditMovieModal({ movie, onSave, onClose }: EditMovieModa
           </div>
 
           {/* Fields */}
-          <div className="flex-1 min-w-0 flex flex-col gap-5">
+          <div className="flex-1 min-w-0 flex flex-col gap-4">
 
             {/* Title field */}
             <div className="flex flex-col gap-1.5">
@@ -192,30 +305,146 @@ export default function EditMovieModal({ movie, onSave, onClose }: EditMovieModa
             </div>
 
             {/* Poster field */}
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-2">
               <label className="font-mono text-[10px] font-bold uppercase tracking-widest text-zinc-500">
                 Poster Image
               </label>
 
               {/* Tab switcher */}
               <div className="flex gap-1 p-1 bg-zinc-900 border border-zinc-800 rounded-xl w-fit">
-                {(['url', 'upload'] as PosterTab[]).map(tab => (
+                {tabs.map(tab => (
                   <button
-                    key={tab}
-                    onClick={() => setPosterTab(tab)}
+                    key={tab.id}
+                    onClick={() => setPosterTab(tab.id)}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-mono font-bold uppercase tracking-wider transition-all cursor-pointer ${
-                      posterTab === tab
+                      posterTab === tab.id
                         ? 'bg-orange-500 text-black'
                         : 'text-zinc-500 hover:text-zinc-200'
                     }`}
                   >
-                    {tab === 'url' ? <Link size={10} /> : <Upload size={10} />}
-                    {tab === 'url' ? 'URL' : 'Upload'}
+                    {tab.icon}
+                    {tab.label}
                   </button>
                 ))}
               </div>
 
-              {posterTab === 'url' ? (
+              {/* ── TMDB Browse ─────────────────────────────────────── */}
+              {posterTab === 'tmdb' && (
+                <div className="flex flex-col gap-2">
+                  {/* Search bar */}
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={tmdbQuery}
+                      onChange={e => setTmdbQuery(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && fetchTmdbPosters(tmdbQuery)}
+                      className="flex-1 bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-xs font-mono text-white placeholder-zinc-600 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all caret-orange-500"
+                      placeholder="Search TMDB…"
+                      spellCheck={false}
+                    />
+                    <button
+                      onClick={() => fetchTmdbPosters(tmdbQuery)}
+                      disabled={tmdbStatus === 'loading'}
+                      className="px-3 py-2 bg-orange-500 hover:bg-orange-400 disabled:opacity-50 text-black rounded-xl transition-all cursor-pointer flex items-center gap-1.5 text-[10px] font-mono font-bold uppercase tracking-wider"
+                    >
+                      {tmdbStatus === 'loading'
+                        ? <Loader2 size={12} className="animate-spin" />
+                        : <Search size={12} />}
+                      Search
+                    </button>
+                  </div>
+
+                  {/* Poster grid */}
+                  {tmdbStatus === 'loading' && (
+                    <div className="flex items-center justify-center py-6 text-zinc-500 gap-2 text-xs font-mono">
+                      <Loader2 size={14} className="animate-spin" /> Fetching posters…
+                    </div>
+                  )}
+
+                  {tmdbStatus === 'error' && (
+                    <div className="text-center py-4 text-red-400 text-xs font-mono">
+                      Failed to fetch — check TMDB key in Settings.
+                    </div>
+                  )}
+
+                  {tmdbStatus === 'done' && tmdbPosters.length === 0 && (
+                    <div className="text-center py-4 text-zinc-500 text-xs font-mono">
+                      No posters found. Try a different title.
+                    </div>
+                  )}
+
+                  {tmdbStatus === 'done' && tmdbPosters.length > 0 && (
+                    <>
+                      <div className="grid grid-cols-3 gap-2">
+                        {visiblePosters.map(p => {
+                          const isSelected = selectedTmdbPath === p.file_path;
+                          return (
+                            <button
+                              key={p.file_path}
+                              onClick={() => applyTmdbPoster(p.file_path)}
+                              className={`relative aspect-[2/3] rounded-lg overflow-hidden border-2 transition-all cursor-pointer group ${
+                                isSelected
+                                  ? 'border-orange-500 ring-2 ring-orange-500/40 scale-[1.03]'
+                                  : 'border-zinc-700 hover:border-orange-500/50'
+                              }`}
+                            >
+                              <img
+                                src={`${TMDB_IMG}w185${p.file_path}`}
+                                alt="TMDB poster"
+                                className="w-full h-full object-cover"
+                                referrerPolicy="no-referrer"
+                              />
+                              {isSelected && (
+                                <div className="absolute inset-0 bg-orange-500/20 flex items-center justify-center">
+                                  <Check size={20} className="text-white drop-shadow-lg" />
+                                </div>
+                              )}
+                              {/* Vote badge */}
+                              {p.vote_count > 0 && (
+                                <div className="absolute bottom-1 right-1 bg-black/70 text-white text-[8px] font-mono px-1 py-0.5 rounded">
+                                  ★ {p.vote_average.toFixed(1)}
+                                </div>
+                              )}
+                              {/* Language badge */}
+                              {p.iso_639_1 && (
+                                <div className="absolute top-1 left-1 bg-black/70 text-zinc-300 text-[8px] font-mono px-1 py-0.5 rounded uppercase">
+                                  {p.iso_639_1}
+                                </div>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Pagination */}
+                      {totalTmdbPages > 1 && (
+                        <div className="flex items-center justify-between pt-1">
+                          <button
+                            onClick={() => setTmdbPage(p => Math.max(0, p - 1))}
+                            disabled={tmdbPage === 0}
+                            className="p-1.5 rounded-lg border border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500 disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer"
+                          >
+                            <ChevronLeft size={12} />
+                          </button>
+                          <span className="text-[9px] font-mono text-zinc-500">
+                            {tmdbPage + 1} / {totalTmdbPages} · {tmdbPosters.length} posters
+                          </span>
+                          <button
+                            onClick={() => setTmdbPage(p => Math.min(totalTmdbPages - 1, p + 1))}
+                            disabled={tmdbPage >= totalTmdbPages - 1}
+                            className="p-1.5 rounded-lg border border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500 disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer"
+                          >
+                            <ChevronRightIcon size={12} />
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* ── URL tab ──────────────────────────────────────────── */}
+              {posterTab === 'url' && (
                 <div className="flex gap-2">
                   <input
                     type="url"
@@ -233,7 +462,10 @@ export default function EditMovieModal({ movie, onSave, onClose }: EditMovieModa
                     Apply
                   </button>
                 </div>
-              ) : (
+              )}
+
+              {/* ── Upload tab ───────────────────────────────────────── */}
+              {posterTab === 'upload' && (
                 <>
                   <button
                     onClick={() => fileInputRef.current?.click()}

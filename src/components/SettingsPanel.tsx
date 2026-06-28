@@ -11,7 +11,10 @@ interface SettingsPanelProps {
   trackerFlixStatus: 'untested' | 'connecting' | 'connected' | 'failed';
   onTestTrackerFlixConnection: () => void;
 
-  stromServerAddress: string; // e.g. "http://192.168.1.x:5000"
+  /** Companion server host — passed from App as companionHost */
+  companionHost?: string;
+  /** Triggers a full rescan + metadata enrich + state update in App */
+  onTriggerCompanionScan?: () => Promise<void>;
 
   onDisconnect?: () => void;
 }
@@ -36,7 +39,8 @@ export default function SettingsPanel({
   onUpdateTrackerFlixHost,
   trackerFlixStatus,
   onTestTrackerFlixConnection,
-  stromServerAddress,
+  companionHost,
+  onTriggerCompanionScan,
   onDisconnect,
 }: SettingsPanelProps) {
   const [focusIdx, setFocusIdx] = useState(0);
@@ -81,23 +85,37 @@ export default function SettingsPanel({
   // ── Sync Library handler ─────────────────────────────────────
   const handleSyncLibrary = useCallback(async () => {
     if (syncStatus === 'syncing') return;
+    if (!onTriggerCompanionScan) {
+      setSyncStatus('error');
+      setTimeout(() => setSyncStatus('idle'), 4000);
+      return;
+    }
     setSyncStatus('syncing');
     setSyncResult(null);
     try {
-      const base = stromServerAddress.replace(/\/$/, '');
-      const res = await fetch(`${base}/api/movies`, { signal: AbortSignal.timeout(30_000) });
-      if (!res.ok) throw new Error(`Server returned ${res.status}`);
-      const data = await res.json();
-      const count = Array.isArray(data) ? data.length : (data?.movies?.length ?? 0);
-      setSyncResult({ count });
+      await onTriggerCompanionScan();
+      // After scan, ask the server how many files it found for the count display
+      if (companionHost) {
+        try {
+          const res = await fetch(`${companionHost.replace(/\/$/, '')}/api/movies`, {
+            signal: AbortSignal.timeout(10_000),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            const count = Array.isArray(data) ? data.length : (data?.movies?.length ?? 0);
+            setSyncResult({ count });
+          }
+        } catch {
+          // count is optional — scan already succeeded
+        }
+      }
       setSyncStatus('success');
-      // Reset to idle after 4 s so user can re-trigger
       setTimeout(() => setSyncStatus('idle'), 4000);
     } catch {
       setSyncStatus('error');
       setTimeout(() => setSyncStatus('idle'), 4000);
     }
-  }, [syncStatus, stromServerAddress]);
+  }, [syncStatus, onTriggerCompanionScan, companionHost]);
 
   const showBackdrop = tmdbConfig.showBackdrop ?? true;
 
