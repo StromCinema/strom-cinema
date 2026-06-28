@@ -180,7 +180,7 @@ app.get('/api/movies', (req, res) => {
             const stats = fs.statSync(fullPath);
             const sizeMB = (stats.size / (1024 * 1024)).toFixed(1) + ' MB';
             results.push({
-              id: 'win-' + Buffer.from(fullPath).toString('hex').slice(0, 16),
+              id: 'win-' + require('crypto').createHash('sha1').update(fullPath).digest('hex').slice(0, 24),
               title: path.basename(entry.name, ext).replace(/[._\-]/g, ' ').trim(),
               fileName: entry.name,
               filePath: fullPath,
