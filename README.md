@@ -23,7 +23,7 @@ TMDB data is always fetched fresh in the background, but your manual edits
 always take priority over the result
 
 
-
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 **First public release**
 Bugs are expected. If you find something broken or have ideas for improvement, please open an issue — all feedback is appreciated and helps Strøm Cinema better.
