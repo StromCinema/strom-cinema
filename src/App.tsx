@@ -183,8 +183,8 @@ export default function App() {
   });
 
   const [tmdbConfig, setTmdbConfig] = useState<TMDBConfig>({
-    apiKey: 'eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiI5NzEzMzUyZDQ3ZGY3ZDdhNmZlZjgwZTRjY2NjYWJlZiIsIm5iZiI6MTc3MTUwOTQ2NS43ODksInN1YiI6IjY5OTcxNmQ5MDM3NTE1ZGFhNTI4OTA5YyIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.NyFD26XYRaYV08rq3VAWDq2df_B4LKWrvvp0ElE4LCo',
-    isEnabled: true,
+    apiKey: '',
+    isEnabled: false,
     language: 'en-US',
   });
 
@@ -357,14 +357,14 @@ export default function App() {
       if (settingsRaw) setPlayerSettings(JSON.parse(settingsRaw));
 
       // 2. TMDB credentials
+      // No system-wide key is baked in — each install must supply its own free
+      // TMDB API key via Settings. Prevents every user sharing one rate-limited key.
       const tmdbRaw = localStorage.getItem('plexus_tmdb_settings');
-      const systemDefaultTMDBKey = 'eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiI5NzEzMzUyZDQ3ZGY3ZDdhNmZlZjgwZTRjY2NjYWJlZiIsIm5iZiI6MTc3MTUwOTQ2NS43ODksInN1YiI6IjY5OTcxNmQ5MDM3NTE1ZGFhNTI4OTA5YyIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.NyFD26XYRaYV08rq3VAWDq2df_B4LKWrvvp0ElE4LCo';
       if (tmdbRaw) {
         const parsed = JSON.parse(tmdbRaw);
-        if (!parsed.apiKey) { parsed.apiKey = systemDefaultTMDBKey; parsed.isEnabled = true; localStorage.setItem('plexus_tmdb_settings', JSON.stringify(parsed)); }
         setTmdbConfig(parsed);
       } else {
-        const defaultTMDB = { apiKey: systemDefaultTMDBKey, isEnabled: true, language: 'en-US' };
+        const defaultTMDB = { apiKey: '', isEnabled: false, language: 'en-US' };
         setTmdbConfig(defaultTMDB);
         localStorage.setItem('plexus_tmdb_settings', JSON.stringify(defaultTMDB));
       }
