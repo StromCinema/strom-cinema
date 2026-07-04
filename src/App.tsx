@@ -391,6 +391,49 @@ export default function App() {
         localStorage.setItem('plexus_companion_host', gateHost);
       }
 
+      // 3b. Server-side config (plexus-config.json, via the /setup page)
+      // The setup page is the intended source of truth for API keys — it writes
+      // to plexus-config.json on the server. Pull it in here and mirror it into
+      // localStorage so every existing localStorage-based TMDB/TVDB read
+      // elsewhere in this file picks it up without needing separate patches.
+      if (activeHost) {
+        try {
+          const cfgRes = await fetch(`${activeHost}/api/setup`);
+          if (cfgRes.ok) {
+            const serverCfg = await cfgRes.json();
+
+            if (typeof serverCfg.tmdbApiKey === 'string' && serverCfg.tmdbApiKey.trim()) {
+              const existingTmdbRaw = localStorage.getItem('plexus_tmdb_settings');
+              const existingTmdb = existingTmdbRaw ? JSON.parse(existingTmdbRaw) : {};
+              const mergedTmdb: TMDBConfig = {
+                ...existingTmdb,
+                apiKey: serverCfg.tmdbApiKey.trim(),
+                isEnabled: true,
+                language: existingTmdb.language || 'en-US',
+              };
+              setTmdbConfig(mergedTmdb);
+              localStorage.setItem('plexus_tmdb_settings', JSON.stringify(mergedTmdb));
+            }
+
+            if (typeof serverCfg.tvdbApiKey === 'string' && serverCfg.tvdbApiKey.trim()) {
+              const existingTvdbRaw = localStorage.getItem('plexus_tvdb_settings');
+              const existingTvdb = existingTvdbRaw ? JSON.parse(existingTvdbRaw) : {};
+              const mergedTvdb: TVDBConfig = {
+                ...existingTvdb,
+                apiKey: serverCfg.tvdbApiKey.trim(),
+                isEnabled: true,
+              };
+              setTvdbConfig(mergedTvdb);
+              localStorage.setItem('plexus_tvdb_settings', JSON.stringify(mergedTvdb));
+            }
+          }
+        } catch (err) {
+          // Server may be unreachable on this boot pass — fall back silently
+          // to whatever is already in localStorage (handled above).
+          console.warn('[Plexus] Could not load server config from /api/setup:', err);
+        }
+      }
+
       // 4b. TrackerFlix host — load and auto-connect
       const tfHostRaw = localStorage.getItem('plexus_trackerflix_host');
       const sanitizeHost = (h: string) => {
