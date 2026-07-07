@@ -68,6 +68,12 @@ export interface LocalFile {
 
 export interface PlaybackSession {
   movieId: string;
+  // Local files are the one thing guaranteed stable across rescans/caches —
+  // movieId can drift between the different Movie-object sources (companion
+  // scan vs. stale cached local scan vs. tracker/recently-added), so we key
+  // resume lookups off localFilePath first when it's available and only
+  // fall back to movieId for non-local / tracker items that have no path.
+  localFilePath?: string;
   title: string;
   posterPath: string;
   backdropPath: string;
