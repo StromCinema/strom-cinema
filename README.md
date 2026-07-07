@@ -5,6 +5,8 @@ Resume button on the movie details modal, so you can pick up where you
 left off instead of starting over.
 
 2026-06-28 NEW: Movie Editing & Poster ManagementMovies in your local library can now be manually edited directly from the UI.
+What you can do:- Rename any movie title with a local override- Replace the poster with a custom image via URL or file upload
+Browse and select from all available TMDB posters for a title, sorted by language and community rating - Reset any movie back to its original TMDB metadata at any time
 
 2026-06-25 Fix: Added a ConnectionGate handshake process to improve Android TV client initialization and backend connectivity.
 
@@ -17,11 +19,7 @@ left off instead of starting over.
 
 
 
-What you can do:
-- Rename any movie title with a local override
-- Replace the poster with a custom image via URL or file upload
-- Browse and select from all available TMDB posters for a title, sorted by language and community rating
-- Reset any movie back to its original TMDB metadata at any time
+
 
 How overrides work:
 Edits are stored locally and keyed by file path, so they are unique per file
