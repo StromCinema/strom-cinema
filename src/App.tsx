@@ -22,6 +22,19 @@ import TrackPickerModal from './components/TrackPickerModal';
 import QualityPickerModal from './components/QualityPickerModal';
 import { parseEpisodesFromMovie, groupMoviesByShow, ParsedEpisode } from './lib/episodeUtils';
 
+// Windows paths returned across different scans/caches can differ in slash
+// direction (\ vs /) and drive-letter or segment casing even when they point
+// at the exact same file — the codebase already normalizes this way in a
+// dozen places before comparing paths (see the repeated `norm`/`normalize`
+// helpers below). Session <-> Movie matching needs the same treatment: a
+// raw `===` on localFilePath silently fails on Windows whenever the casing
+// or slash style drifts between the scan that created the session and the
+// scan that's currently in state, which is exactly what made "Continue
+// Watching" cards unclickable while the same movie worked fine everywhere
+// else (those other lookups go through this normalization already).
+const normalizePath = (p?: string | null): string =>
+  (p || '').toUpperCase().replace(/[\\/]+/g, '/').replace(/\/+$/, '');
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Sentinel components for infinite scroll
 // ─────────────────────────────────────────────────────────────────────────────
@@ -264,7 +277,7 @@ export default function App() {
   const [targetPlatform, setTargetPlatform] = useState<'windows' | 'android-tv' | 'tizen-tv'>(() => {
     // Always use android-tv mode when running as a native Android app
     if (Capacitor.isNativePlatform()) return 'android-tv';
-    return (localStorage.getItem('strom_target_platform') as 'windows' | 'android-tv' | 'tizen-tv') || 'android-tv'; // changed from 'windows'
+    return (localStorage.getItem('strom_target_platform') as 'windows' | 'android-tv' | 'tizen-tv') || 'windows';
   });
 
   const updateTargetPlatform = (platform: 'windows' | 'android-tv' | 'tizen-tv') => {
@@ -673,7 +686,7 @@ export default function App() {
   };
 
   // On Android — call StromPlayer directly (ExoPlayer). Never mounts CinemaVideoPlayer.
-  const playNative = (movie: Movie, startTime?: number, audioTrack: number = -1, subtitleTrack: number = -1) => {
+  const playNative = async (movie: Movie, startTime?: number, audioTrack: number = -1, subtitleTrack: number = -1) => {
     const host = localStorage.getItem('plexus_companion_host') || 'http://localhost:5000';
     const filePath = movie.localFilePath || movie.sourcePath || '';
     const streamUrl = filePath
@@ -682,39 +695,46 @@ export default function App() {
     if (!streamUrl) return;
 
     const StromPlayer = (window as any).Capacitor?.Plugins?.StromPlayer;
-    if (StromPlayer) {
-      // Register a one-shot listener to capture the position when user exits
-      const handler = (event: { positionMs: number; durationMs: number }) => {
-        StromPlayer.removeAllListeners?.('playerClosed');
-        const positionSec = Math.floor(event.positionMs / 1000);
-        const durationSec = event.durationMs > 0 ? Math.floor(event.durationMs / 1000) : 0;
-        // Only save if watched more than 5 seconds and not within last 60s of end
-        const nearEnd = durationSec > 0 && (durationSec - positionSec) < 60;
-        if (positionSec > 5 && !nearEnd) {
-          updateSession({
-            movieId:     movie.id,
-            title:       movie.title,
-            posterPath:  movie.posterPath ?? '',
-            currentTime: positionSec,
-            duration:    durationSec,
-            updatedAt:   Date.now(),
-          });
-        } else if (nearEnd) {
-          // Finished — remove any existing session for this title
-          setPlaybackSessions(prev => {
-            const updated = prev.filter(s => s.movieId !== movie.id);
-            saveLibrary({ plexus_playback_sessions: updated });
-            return updated;
-          });
-        }
-      };
-      StromPlayer.addListener('playerClosed', handler);
-      StromPlayer.play({
-        url:          streamUrl,
+    if (!StromPlayer) return;
+
+    // StromPlayer.play() now resolves once the user backs out of PlayerActivity
+    // (Capacitor's @ActivityCallback keeps the call alive across the native
+    // screen). No more event listener / race condition — the promise itself
+    // is the signal that playback ended, with the exit position attached.
+    const result = await StromPlayer.play({
+      url:          streamUrl,
+      title:        movie.title,
+      audioTrack,
+      subtitleTrack,
+      startTimeMs:  Math.floor((startTime ?? 0) * 1000),
+    });
+
+    const positionSec = Math.floor((result?.positionMs ?? 0) / 1000);
+    const durationSec = (result?.durationMs ?? 0) > 0 ? Math.floor(result.durationMs / 1000) : 0;
+    // Threshold matches MovieDetailsModal's hasResume check (currentTime > 30) —
+    // saving below that just leaves a Continue Watching card with no way to
+    // actually resume, since the modal won't show the button for it.
+    const nearEnd = durationSec > 0 && (durationSec - positionSec) < 60;
+    if (positionSec > 30 && !nearEnd) {
+      updateSession({
+        movieId:      movie.id,
+        localFilePath: movie.localFilePath || movie.sourcePath || undefined,
         title:        movie.title,
-        audioTrack,
-        subtitleTrack,
-        startTimeMs:  Math.floor((startTime ?? 0) * 1000),
+        posterPath:   movie.posterPath ?? '',
+        backdropPath: movie.backdropPath ?? movie.posterPath ?? '',
+        currentTime:  positionSec,
+        duration:     durationSec,
+        lastPlayedAt: new Date().toISOString(),
+      });
+    } else if (nearEnd) {
+      // Finished — remove any existing session for this title. Match by
+      // localFilePath when we have one (it's stable across id drift between
+      // Movie sources); fall back to movieId only for items with no path.
+      setPlaybackSessions(prev => {
+        const path = movie.localFilePath || movie.sourcePath || '';
+        const updated = prev.filter(s => (path && s.localFilePath ? normalizePath(s.localFilePath) !== normalizePath(path) : s.movieId !== movie.id));
+        saveLibrary({ plexus_playback_sessions: updated });
+        return updated;
       });
     }
   };
@@ -742,11 +762,14 @@ export default function App() {
           startTime: startTime ?? 0,
           audioTrack: audioTrack ?? null,
           subtitleTrack: subtitleTrack ?? null,
+          movieId: movie.id,
         }),
       });
       const data = await res.json();
       if (!res.ok) {
         setMpvError(data.error || 'MPV failed to launch.');
+      } else {
+        watchMpvSession(movie, host);
       }
     } catch (err) {
       setMpvError('Could not reach companion server.');
@@ -755,14 +778,86 @@ export default function App() {
     }
   };
 
+  // Polls the companion server while mpv is open. When mpv closes, grabs the
+  // last known position and saves/updates a PlaybackSession — the same store
+  // MovieDetailsModal already reads for the "Resume {time}" button. Mirrors
+  // the "finished vs still-watching" threshold used in the Android path above.
+  const mpvPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const watchMpvSession = (movie: Movie, host: string) => {
+    if (mpvPollRef.current) clearInterval(mpvPollRef.current);
+
+    mpvPollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`${host}/api/play/status`);
+        if (!res.ok) return;
+        const status = await res.json();
+        if (status.playing) return; // still watching, keep polling
+
+        // mpv has closed — stop polling and record the result once.
+        if (mpvPollRef.current) { clearInterval(mpvPollRef.current); mpvPollRef.current = null; }
+
+        const positionSec = Math.floor(status.position || 0);
+        const durationSec = Math.floor(status.duration || 0);
+        const nearEnd = durationSec > 0 && (durationSec - positionSec) < 60;
+
+        if (positionSec > 30 && !nearEnd) {
+          updateSession({
+            movieId: movie.id,
+            localFilePath: movie.localFilePath || movie.sourcePath || undefined,
+            title: movie.title,
+            posterPath: movie.posterPath ?? '',
+            backdropPath: movie.backdropPath ?? movie.posterPath ?? '',
+            currentTime: positionSec,
+            duration: durationSec,
+            lastPlayedAt: new Date().toISOString(),
+          });
+        } else if (nearEnd) {
+          setPlaybackSessions(prev => {
+            const path = movie.localFilePath || movie.sourcePath || '';
+            const updated = prev.filter(s => (path && s.localFilePath ? normalizePath(s.localFilePath) !== normalizePath(path) : s.movieId !== movie.id));
+            saveLibrary({ plexus_playback_sessions: updated });
+            return updated;
+          });
+        }
+      } catch {
+        // companion server unreachable mid-poll — just try again next tick
+      }
+    }, 2000);
+  };
+
   const updateSession = useCallback((newSession: PlaybackSession) => {
     setPlaybackSessions((prev) => {
-      const filtered = prev.filter((s) => s.movieId !== newSession.movieId);
+      // Dedup by localFilePath when both sides have one — this is what
+      // prevents the same file from spawning two Continue Watching entries
+      // (or silently orphaning the old one) when its movieId has drifted
+      // between a stale cached scan and a fresh one.
+      const filtered = prev.filter((s) =>
+        newSession.localFilePath && s.localFilePath
+          ? normalizePath(s.localFilePath) !== normalizePath(newSession.localFilePath)
+          : s.movieId !== newSession.movieId
+      );
       const updated = [newSession, ...filtered].slice(0, 10);
       saveLibrary({ plexus_playback_sessions: updated });
       return updated;
     });
   }, [companionHost]);
+
+  // Resolve the PlaybackSession for a given Movie. Prefers localFilePath —
+  // the one identifier guaranteed to stay stable across rescans, whereas a
+  // Movie's `id` can differ between companionScannedMovies (refreshed every
+  // boot) and localScannedMovies (a persisted cache that isn't refreshed and
+  // can retain an older id scheme for the same underlying file). Falls back
+  // to movieId for items with no path (tracker/streaming entries).
+  const findSessionForMovie = useCallback((movie: Movie | null | undefined): PlaybackSession | undefined => {
+    if (!movie) return undefined;
+    const path = movie.localFilePath || movie.sourcePath || '';
+    if (path) {
+      const normPath = normalizePath(path);
+      const byPath = playbackSessions.find(s => s.localFilePath && normalizePath(s.localFilePath) === normPath);
+      if (byPath) return byPath;
+    }
+    return playbackSessions.find(s => s.movieId === movie.id);
+  }, [playbackSessions]);
 
   // Sync player updates helper
   const updatePlayerSettings = (newSettings: Partial<PlayerSettings>) => {
@@ -1717,12 +1812,100 @@ export default function App() {
 
   // --- D-PAD / KEYBOARD REMOTE TRAVERSAL MATRIX ---
 
+  // Continue Watching (and its TV-remote equivalent) only ever searched
+  // companionScannedMovies — but getLibraryMovies() runs everything through
+  // groupMoviesByShow() first, which gives grouped TV shows a synthetic id
+  // that never appears in the raw scanned lists. That made "matched" come
+  // back undefined for grouped shows: no click, and — since updateSession()
+  // is the only place a Movie's poster art reaches a session — no poster.
+  // This checks every source of Movie objects we track, ungrouped.
+  const findLibraryMovieById = useCallback((id: string | undefined | null): Movie | undefined => {
+    if (!id) return undefined;
+    const flatTracker = Object.values(trackerMovies).flat();
+    return (
+      companionScannedMovies.find(m => m.id === id) ||
+      localScannedMovies.find(m => m.id === id) ||
+      flatTracker.find(m => m.id === id) ||
+      recentlyAdded.find(m => m.id === id)
+    );
+  }, [companionScannedMovies, localScannedMovies, trackerMovies, recentlyAdded]);
+
+  // Resolve the Movie behind a PlaybackSession. A session's movieId can go
+  // stale relative to the *current* scan (e.g. metadata enrichment or a
+  // rescan re-assigning ids after the session was written), so this checks
+  // localFilePath across every source first — the one thing that doesn't
+  // drift — before falling back to the plain id lookup above. This is what
+  // Continue Watching (mouse click and TV-remote select) both need to call
+  // instead of findLibraryMovieById directly, or a session whose movieId no
+  // longer matches anything current silently resolves to nothing and the
+  // click does nothing.
+  //
+  // Path comparisons go through normalizePath rather than a raw `===`: on
+  // Windows the same file can come back with different slash direction or
+  // casing between the scan that wrote the session and the scan currently
+  // in state, so a strict string match silently fails even though it's the
+  // same file — exactly what was making every Continue Watching card a
+  // dead click regardless of platform.
+  const findLibraryMovieForSession = useCallback((session: PlaybackSession | null | undefined): Movie | undefined => {
+    if (!session) return undefined;
+    if (session.localFilePath) {
+      const normPath = normalizePath(session.localFilePath);
+      const flatTracker = Object.values(trackerMovies).flat();
+      const byPath =
+        companionScannedMovies.find(m => m.localFilePath && normalizePath(m.localFilePath) === normPath) ||
+        localScannedMovies.find(m => m.localFilePath && normalizePath(m.localFilePath) === normPath) ||
+        flatTracker.find(m => m.localFilePath && normalizePath(m.localFilePath) === normPath) ||
+        recentlyAdded.find(m => m.localFilePath && normalizePath(m.localFilePath) === normPath);
+      if (byPath) return byPath;
+    }
+    return findLibraryMovieById(session.movieId);
+  }, [companionScannedMovies, localScannedMovies, trackerMovies, recentlyAdded, findLibraryMovieById]);
+
+  // One-time migration for sessions written before PlaybackSession had a
+  // localFilePath field. Those legacy sessions have nothing for
+  // findLibraryMovieForSession's path check to match against, so they still
+  // fall through to the old movieId lookup — which is exactly the lookup
+  // that was already failing (that's the whole reason localFilePath matching
+  // was added). Without this, rebuilding the app changes nothing for
+  // Continue Watching cards that were already sitting in the cache, since
+  // they keep loading with no localFilePath and nothing here ever sets one.
+  // Title is the one field every session has always recorded, so it's used
+  // as the one-time recovery key to backfill localFilePath (and refresh
+  // movieId to the current id) once the current scan is available. Runs
+  // once per session that needs it; already-migrated / newly-created
+  // sessions (which do have localFilePath) are left untouched.
+  useEffect(() => {
+    if (companionScannedMovies.length === 0) return;
+    setPlaybackSessions(prev => {
+      let changed = false;
+      const migrated = prev.map(s => {
+        if (s.localFilePath) return s;
+        const match = companionScannedMovies.find(
+          m => m.localFilePath && m.title.trim().toLowerCase() === s.title.trim().toLowerCase()
+        );
+        if (!match) return s;
+        changed = true;
+        return { ...s, localFilePath: match.localFilePath, movieId: match.id };
+      });
+      if (!changed) return prev;
+      saveLibrary({ plexus_playback_sessions: migrated });
+      return migrated;
+    });
+  }, [companionScannedMovies]);
+
   const getLibraryMovies = useCallback(() => {
     if (!selectedPathId) return [];
     const activePathObj = libraryPaths.find(p => p.id === selectedPathId);
     if (!activePathObj) return [];
     
-    const combined = [...localScannedMovies, ...companionScannedMovies].filter(
+    // companionScannedMovies first: it's refreshed from the server on every
+    // boot, while localScannedMovies is a persisted cache that never gets
+    // refreshed and can hold a stale id for a file whose id scheme has since
+    // changed server-side. Putting it first here (as findLibraryMovieById
+    // already does) means the dedup below keeps the fresh id, so a movie
+    // opened from this shelf carries the same id its PlaybackSession was
+    // saved under.
+    const combined = [...companionScannedMovies, ...localScannedMovies].filter(
       (m, idx, self) => self.findIndex(t => (t.localFilePath || t.id) === (m.localFilePath || m.id)) === idx
     );
 
@@ -1927,7 +2110,7 @@ export default function App() {
     } else if (focusRow === 1) {
       if (focusCol === 0) {
         if (currentHeroMovie?.isLocal && (currentHeroMovie?.localFilePath || currentHeroMovie?.sourcePath)) {
-          const session = playbackSessions.find(s => s.movieId === currentHeroMovie.id);
+          const session = findSessionForMovie(currentHeroMovie);
           if (targetPlatform === 'android-tv') {
             playNative(currentHeroMovie, session?.currentTime ?? 0);
           } else {
@@ -1940,7 +2123,7 @@ export default function App() {
       if (focusCol === 1) setSelectedMovie(currentHeroMovie);
     } else if (focusRow === 2 && hasContinue) {
       const sessionObj = playbackSessions[focusCol];
-      const matchedMov = companionScannedMovies.find(m => m.id === sessionObj?.movieId);
+      const matchedMov = findLibraryMovieForSession(sessionObj);
       if (matchedMov) {
         if (matchedMov.isLocal && (matchedMov.localFilePath || matchedMov.sourcePath)) {
           if (targetPlatform === 'android-tv') {
@@ -1951,6 +2134,8 @@ export default function App() {
         } else {
           setPlayingMovie(matchedMov);
         }
+      } else {
+        console.warn('[ContinueWatching enter] no matchedMov — bailing');
       }
     } else if (focusRow === recentlyAddedRowIndex && hasRecentlyAdded) {
       const mov = recentlyAdded[focusCol];
@@ -2892,7 +3077,7 @@ export default function App() {
                         gridMode
                         onClick={() => setSelectedMovie(movie)}
                         onPlayClick={() => {
-                          const session = playbackSessions.find(s => s.movieId === movie.id);
+                          const session = findSessionForMovie(movie);
                           if (Capacitor.isNativePlatform()) {
                             playNative(movie, session?.currentTime ?? 0);
                           } else {
@@ -2914,7 +3099,7 @@ export default function App() {
               movie={currentHeroMovie}
               onPlayClick={(m) => {
                 if (m.isLocal && (m.localFilePath || m.sourcePath)) {
-                  const session = playbackSessions.find(s => s.movieId === m.id);
+                  const session = findSessionForMovie(m);
                   if (Capacitor.isNativePlatform()) {
                     playNative(m, session?.currentTime ?? 0);
                   } else {
@@ -2941,9 +3126,9 @@ export default function App() {
                   <div className="ml-4 h-[1px] flex-1 bg-gradient-to-r from-white/10 to-transparent"></div>
                 </h2>
 
-                <div id="continue-scroller" className="flex gap-4 overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-zinc-900 select-none">
+                <div id="continue-scroller" className="flex gap-4 overflow-x-auto p-3 -m-3 scrollbar-thin scrollbar-thumb-zinc-900 select-none">
                   {playbackSessions.map((session, index) => {
-                    const matched = companionScannedMovies.find(m => m.id === session.movieId);
+                    const matched = findLibraryMovieForSession(session);
                     const percent = Math.min(100, Math.floor((session.currentTime / session.duration) * 100));
                     const isCardFocused = isTvMode && focusRow === 2 && focusCol === index;
 
@@ -2961,6 +3146,7 @@ export default function App() {
                               playWithMPV(matched, session.currentTime);
                             }
                           } else {
+                            console.warn('[ContinueWatching click] falling back to setPlayingMovie (not local / no path)');
                             setPlayingMovie(matched);
                           }
                         }}
@@ -3289,7 +3475,7 @@ export default function App() {
         <MovieDetailsModal
           movie={selectedMovie}
           prefetchedTracks={prefetchedTracks[selectedMovie.id] || null}
-          playbackSession={playbackSessions.find(s => s.movieId === selectedMovie.id) || null}
+          playbackSession={findSessionForMovie(selectedMovie) || null}
           onMovieUpdate={handleMovieUpdate}
           onPlayClick={(m, startTime, audioTrack, subtitleTrack) => {
             setSelectedMovie(null);
@@ -3343,7 +3529,7 @@ export default function App() {
               : `E${episode.episode}`;
             const epTitle = `${show.title} — ${epLabel}`;
             const epMovie = { ...show, localFilePath: episode.filePath, title: epTitle, id: episode.id ?? show.id };
-            const session = playbackSessions.find(s => s.movieId === epMovie.id);
+            const session = findSessionForMovie(epMovie);
             if (Capacitor.isNativePlatform()) {
               playNative(epMovie, session?.currentTime ?? 0);
             } else {
@@ -3373,7 +3559,7 @@ export default function App() {
                 : `E${episode.episode}`;
               const epTitle = `${show.title} — ${epLabel}`;
               const epMovie = { ...show, localFilePath: episode.filePath, title: epTitle, id: episode.id ?? show.id };
-              const session = playbackSessions.find(s => s.movieId === epMovie.id);
+              const session = findSessionForMovie(epMovie);
               if (Capacitor.isNativePlatform()) {
                 playNative(epMovie, session?.currentTime ?? 0);
               } else {
