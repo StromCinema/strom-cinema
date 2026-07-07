@@ -536,7 +536,7 @@ export default function MovieDetailsModal({
                     }`}
                   >
                     <SkipForward size={14} />
-                    <span>Resume {formatTime(playbackSession!.currentTime)}</span>
+                    <span>Resume</span>
                   </button>
                 )}
 
