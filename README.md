@@ -8,7 +8,7 @@ left off instead of starting over.
 What you can do:- Rename any movie title with a local override- Replace the poster with a custom image via URL or file upload
 Browse and select from all available TMDB posters for a title, sorted by language and community rating - Reset any movie back to its original TMDB metadata at any time
 
-2026-06-25 Fix: Added a ConnectionGate handshake process to improve Android TV client initialization and backend connectivity.
+2026-06-25 NEW: Added a ConnectionGate handshake process to improve Android TV client initialization and backend connectivity.
 
 2026-06-24 Fix: ExoPlayer settings for Android TV to improve , navigation, and overall user experience.
 
