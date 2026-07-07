@@ -1,14 +1,21 @@
 Changelog: 
 
-2026-06-21 Fix: Library not loading on first launch (Android) On first launch, the app failed to display movies and TV series even when library-cache.json was present on the backend. A restart of the tv-app was required before content appeared.
+2026-07-07 NEW: Resume playback & Continue Watching. Strøm Cinema now tracks playback position and surfaces a Continue Watching shelf on the home screen, plus a
+Resume button on the movie details modal, so you can pick up where you
+left off instead of starting over.
+
+2026-06-28 NEW: Movie Editing & Poster ManagementMovies in your local library can now be manually edited directly from the UI.
+
+2026-06-25 Fix: Added a ConnectionGate handshake process to improve Android TV client initialization and backend connectivity.
 
 2026-06-24 Fix: ExoPlayer settings for Android TV to improve , navigation, and overall user experience.
 
-2026-06-25 Fix: Added a ConnectionGate handshake process to improve Android TV client initialization and backend connectivity.
+2026-06-21 Fix: Library not loading on first launch (Android) On first launch, the app failed to display movies and TV series even when library-cache.json was present on the backend. A restart of the tv-app was required before content appeared.
 
-2026-06-25 Fix: Added a ConnectionGate handshake process to improve Android TV client initialization and backend connectivity.
 
-2026-06-28 NEW: Movie Editing & Poster ManagementMovies in your local library can now be manually edited directly from the UI.
+
+
+
 
 What you can do:
 - Rename any movie title with a local override
