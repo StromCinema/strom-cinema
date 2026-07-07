@@ -74,6 +74,11 @@ Tick Remember host connection so the app auto-connects on next launch. Hit Conne
 
 If it fails: check the PC firewall allows inbound traffic on port 5000, and confirm both devices are on the same network.
 
+<img width="732" height="291" alt="image" src="https://github.com/user-attachments/assets/4a3150ee-9923-427d-99f4-5f78b56a060f" />
+
+
+<img width="878" height="565" alt="image" src="https://github.com/user-attachments/assets/6544bcbd-cd46-4daa-ab74-150c105349bf" />
+
 <img width="683" height="444" alt="image" src="https://github.com/user-attachments/assets/2c11d1f3-a1d8-41a0-9978-428f9019d081" />
 <img width="804" height="474" alt="image" src="https://github.com/user-attachments/assets/1457013a-d541-4727-baa7-0d742f4db262" />
 
