@@ -1,5 +1,7 @@
 Changelog: 
 
+2026-07-11 Fix: (Android-APK) Continue Watching resume on Android TV Resuming playback from Continue Watching / the Resume button always restarted from 0:00 on Android (ExoPlayer), even though the same session data resumed correctly via MPV on Windows. Continue Watching, the Resume button, and D-pad resume all now correctly seek to the last saved position on Android TV.
+
 2026-07-07 NEW: Resume playback & Continue Watching. Strøm Cinema now tracks playback position and surfaces a Continue Watching shelf on the home screen, plus a
 Resume button on the movie details modal, so you can pick up where you
 left off instead of starting over.
