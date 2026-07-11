@@ -57,7 +57,15 @@ export default function HoverPreviewCard({
     [movie.localFilePath, episodePaths]
   );
   const isMultiEpisode = episodes.length > 1;
-  const episodeBadge = isMultiEpisode ? formatEpisodeBadge(episodes) : null;
+  // For a single (non-grouped) episode card, episodes.length is 0 or 1 and
+  // formatEpisodeBadge has nothing useful to say — fall back to the tagline
+  // written at scan time (e.g. "S04E01 · Local TV Episode") so individual
+  // episode cards still surface their own season/episode instead of showing
+  // nothing at all.
+  const singleEpisodeLabel = !isMultiEpisode
+    ? /^S\d{1,2}E\d{1,3}/i.exec((movie as any).tagline || '')?.[0]?.toUpperCase() ?? null
+    : null;
+  const episodeBadge = isMultiEpisode ? formatEpisodeBadge(episodes) : singleEpisodeLabel;
   // ──────────────────────────────────────────────────────────────────────────
 
   // ── Track prefetch: fire once when this card becomes active (local only) ──

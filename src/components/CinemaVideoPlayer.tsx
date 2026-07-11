@@ -549,7 +549,10 @@ export default function CinemaVideoPlayer({
             <div className="flex flex-col">
               <span className="text-sm font-semibold text-zinc-100 tracking-wide">{movie.title}</span>
               <span className="text-[11px] font-mono text-zinc-400">
-                {movie.genres.join(' • ')}
+                {(() => {
+                  const epLabel = /^S\d{1,2}E\d{1,3}/i.exec(movie.tagline || '')?.[0]?.toUpperCase();
+                  return epLabel ? `${epLabel} · ${movie.genres.join(' • ')}` : movie.genres.join(' • ');
+                })()}
               </span>
             </div>
           </div>

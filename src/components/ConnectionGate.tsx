@@ -78,6 +78,27 @@ async function discoverServer(port = 5000): Promise<string | null> {
   });
 }
 
+/**
+ * Ask the native StromPlayer plugin to find the server via mDNS
+ * (_strom._tcp), which the companion server advertises via bonjour-service.
+ * This is subnet-agnostic — works on any home network without needing to
+ * know its IP range ahead of time — so it's tried before the TCP subnet
+ * scan. Resolves to null on web/Windows (no native plugin) or if nothing
+ * answers within the plugin's own timeout, letting the caller fall through
+ * to discoverServer() below.
+ */
+async function discoverViaNsd(): Promise<string | null> {
+  const StromPlayer = (window as any).Capacitor?.Plugins?.StromPlayer;
+  if (!StromPlayer?.discoverServer) return null;
+  try {
+    const { host, port } = await StromPlayer.discoverServer();
+    if (!host) return null;
+    return `${host}:${port || 5000}`;
+  } catch {
+    return null; // no responder within the native timeout — fall through
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function ConnectionGate({ onConnected, targetPlatform }: ConnectionGateProps) {
@@ -278,14 +299,28 @@ export default function ConnectionGate({ onConnected, targetPlatform }: Connecti
         }
       }
 
-      // ── Step 2: subnet scan if saved address missed or doesn't exist ──
+      // ── Step 2: mDNS (subnet-agnostic, works on any home network) ──────
+      if (!workingBase) {
+        setLinkStatus('discovering');
+        setDiscoveryMsg('Looking for server…');
+        const viaMdns = await discoverViaNsd();
+        if (viaMdns) {
+          workingBase = `http://${viaMdns}`;
+          localStorage.setItem('strom_server_address', viaMdns);
+          setDiscoveryMsg(`Found server at ${viaMdns}`);
+        }
+      }
+
+      // ── Step 3: TCP subnet scan — fallback if mDNS is unavailable or ──
+      // blocked (e.g. a router with multicast disabled, or web/Windows
+      // where there's no native plugin to ask).
       if (!workingBase) {
         setLinkStatus('discovering');
         setDiscoveryMsg('Scanning local network…');
         const discovered = await discoverServer(5000);
         if (discovered) {
           workingBase = `http://${discovered}`;
-          // Save so next time we skip the scan
+          // Save so next time we skip straight to it
           localStorage.setItem('strom_server_address', discovered);
           setDiscoveryMsg(`Found server at ${discovered}`);
         }
