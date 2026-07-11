@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
-import { Play, Info, Settings, Laptop, Film, Plus, Trash2, FolderPlus, Compass, Users, Heart, ClipboardList, Database, Library, ArrowRight, Star, RefreshCw, Layers, Server, Zap, Download, X, ChevronDown } from 'lucide-react';
+import { Play, Info, Settings, Laptop, Film, Plus, Trash2, FolderPlus, Compass, Users, Heart, ClipboardList, Database, Library, ArrowRight, Star, RefreshCw, Layers, Server, Zap, Download, X, ChevronDown, Tv } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 
 import { Movie, LibraryPath, LocalFile, PlaybackSession, PlayerSettings, TMDBConfig, TVDBConfig, TrackerRelease, TrackerCategory, TrackInfo } from './types';
@@ -34,6 +34,31 @@ import { parseEpisodesFromMovie, groupMoviesByShow, ParsedEpisode } from './lib/
 // else (those other lookups go through this normalization already).
 const normalizePath = (p?: string | null): string =>
   (p || '').toUpperCase().replace(/[\\/]+/g, '/').replace(/\/+$/, '');
+
+// Individual TV episode Movie objects get a tagline like "S04E01 · Local TV
+// Episode" written at scan time (see parseTVFilename call sites). Continue
+// Watching, Recently Added, and the native/web player title overlays all
+// want just the "S04E01" part on its own — this pulls it out once instead
+// of every call site re-deriving/duplicating the regex.
+const getEpisodeLabel = (movie?: { tagline?: string } | null): string | null => {
+  const match = /^S\d{1,2}E\d{1,3}/i.exec(movie?.tagline || '');
+  return match ? match[0].toUpperCase() : null;
+};
+
+// Host strings coming out of the ConnectionGate pairing/subnet-scan flow
+// aren't guaranteed to be bare "host:port" — on at least one machine the
+// scanner has handed back a value that already includes a scheme, and blindly
+// prepending "http://" on top of that produced "http://http//1.2.3.4:5000/",
+// which then turns every "${host}/api/..." call into a doubled, trailing-
+// slashed URL that fails to resolve. Same idea as the TrackerFlix host's
+// existing (but not shared) sanitizeHost helper below — strip any existing
+// scheme before re-adding one, and drop trailing slashes so appending
+// "/api/..." never produces a double slash.
+const normalizeHost = (raw: string): string => {
+  const trimmed = (raw || '').trim().replace(/\/+$/, '');
+  const withoutScheme = trimmed.replace(/^https?:\/\//i, '');
+  return `http://${withoutScheme}`;
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Sentinel components for infinite scroll
@@ -215,7 +240,7 @@ export default function App() {
 
   // Windows Companion state variables
   const [companionHost, setCompanionHost] = useState<string>(
-  localStorage.getItem('plexus_companion_host') || 'http://localhost:5000'
+  normalizeHost(localStorage.getItem('plexus_companion_host') || 'localhost:5000')
 );
   const [companionStatus, setCompanionStatus] = useState<'untested' | 'connecting' | 'connected' | 'failed'>('untested');
   const [companionScannedMovies, setCompanionScannedMovies] = useState<Movie[]>([]);
@@ -392,9 +417,17 @@ export default function App() {
       // On first run after linking, onConnected() has already written both
       // plexus_companion_host and strom_server_address to localStorage before
       // boot() re-runs (isGateClosed flipped to false). So hostRaw will be set.
-      const hostRaw = localStorage.getItem('plexus_companion_host');
+      // hostRaw is re-normalized here (not just trusted as-is) so a value that
+      // got corrupted by the old unguarded `http://${addr}` construction (now
+      // fixed at the source in onConnected below) self-heals on the next boot
+      // instead of being stuck malformed in localStorage forever.
+      const hostRawStored = localStorage.getItem('plexus_companion_host');
+      const hostRaw = hostRawStored ? normalizeHost(hostRawStored) : null;
+      if (hostRaw && hostRaw !== hostRawStored) {
+        localStorage.setItem('plexus_companion_host', hostRaw);
+      }
       const gateAddr = localStorage.getItem('strom_server_address');
-      const gateHost = gateAddr ? `http://${gateAddr}` : null;
+      const gateHost = gateAddr ? normalizeHost(gateAddr) : null;
       const activeHost = hostRaw || gateHost || companionHost;
       if (hostRaw) {
         setCompanionHost(hostRaw);
@@ -687,7 +720,7 @@ export default function App() {
 
   // On Android — call StromPlayer directly (ExoPlayer). Never mounts CinemaVideoPlayer.
   const playNative = async (movie: Movie, startTime?: number, audioTrack: number = -1, subtitleTrack: number = -1) => {
-    const host = localStorage.getItem('plexus_companion_host') || 'http://localhost:5000';
+    const host = normalizeHost(localStorage.getItem('plexus_companion_host') || 'localhost:5000');
     const filePath = movie.localFilePath || movie.sourcePath || '';
     const streamUrl = filePath
       ? `${host}/api/stream?path=${encodeURIComponent(filePath)}`
@@ -697,6 +730,8 @@ export default function App() {
     const StromPlayer = (window as any).Capacitor?.Plugins?.StromPlayer;
     if (!StromPlayer) return;
 
+    const episodeLabel = getEpisodeLabel(movie);
+
     // StromPlayer.play() now resolves once the user backs out of PlayerActivity
     // (Capacitor's @ActivityCallback keeps the call alive across the native
     // screen). No more event listener / race condition — the promise itself
@@ -704,6 +739,7 @@ export default function App() {
     const result = await StromPlayer.play({
       url:          streamUrl,
       title:        movie.title,
+      episodeLabel: episodeLabel ?? '',
       audioTrack,
       subtitleTrack,
       startTimeMs:  Math.floor((startTime ?? 0) * 1000),
@@ -749,7 +785,7 @@ export default function App() {
       return;
     }
 
-    const host = localStorage.getItem('plexus_companion_host') || 'http://localhost:5000';
+    const host = normalizeHost(localStorage.getItem('plexus_companion_host') || 'localhost:5000');
     setMpvLaunching(true);
     setMpvError(null);
 
@@ -1515,7 +1551,8 @@ export default function App() {
 
   // Auto test connection on start if host stored
   useEffect(() => {
-    const stored = localStorage.getItem('plexus_companion_host');
+    const storedRaw = localStorage.getItem('plexus_companion_host');
+    const stored = storedRaw ? normalizeHost(storedRaw) : null;
     if (stored) {
       const pingStatus = async () => {
         try {
@@ -2707,7 +2744,7 @@ export default function App() {
         targetPlatform={targetPlatform}
         onConnected={(addr) => {
   setConnectedServerAddress(addr);
-  const fullHost = `http://${addr}`;
+  const fullHost = normalizeHost(addr);
   setCompanionHost(fullHost);
   localStorage.setItem('plexus_companion_host', fullHost);
   setIsGateClosed(false);
@@ -3131,6 +3168,7 @@ export default function App() {
                     const matched = findLibraryMovieForSession(session);
                     const percent = Math.min(100, Math.floor((session.currentTime / session.duration) * 100));
                     const isCardFocused = isTvMode && focusRow === 2 && focusCol === index;
+                    const episodeLabel = getEpisodeLabel(matched);
 
                     return (
                       <div
@@ -3166,9 +3204,17 @@ export default function App() {
                           loading="lazy"
                           referrerPolicy="no-referrer"
                         />
+                        {episodeLabel && (
+                          <div className={`absolute top-2 left-2 flex items-center gap-1 px-1.5 py-0.5 rounded-md shadow-lg ${targetPlatform === 'tizen-tv' ? 'bg-cyan-500' : 'bg-orange-500'}`}>
+                            <Tv size={8} className="text-black flex-shrink-0" />
+                            <span className="text-[8px] font-black font-mono text-black uppercase tracking-wide leading-none">{episodeLabel}</span>
+                          </div>
+                        )}
                         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent flex flex-col justify-end p-3.5">
                           <span className="font-bold text-white text-xs sm:text-sm tracking-wide truncate">{session.title}</span>
-                          <span className="text-[10px] font-mono text-zinc-400 mt-0.5">Resume playing</span>
+                          <span className="text-[10px] font-mono text-zinc-400 mt-0.5">
+                            {episodeLabel ? `${episodeLabel} · Resume playing` : 'Resume playing'}
+                          </span>
                         </div>
 
                         {/* Watch duration bar overlay */}
@@ -3197,6 +3243,7 @@ export default function App() {
                 <div id="recently-added-scroller" className="flex gap-[1.2vw] overflow-x-auto overflow-y-visible px-4 py-8 -mx-4 -my-8 scrollbar-thin scrollbar-thumb-zinc-900 select-none">
                   {recentlyAdded.map((mov, index) => {
                     const isCardFocused = isTvMode && focusRow === (playbackSessions.length > 0 ? 3 : 2) && focusCol === index;
+                    const episodeLabel = getEpisodeLabel(mov);
 
                     return (
                       <div
@@ -3215,8 +3262,15 @@ export default function App() {
                             loading="lazy"
                             referrerPolicy="no-referrer"
                           />
-                          {/* NEW badge top-left */}
-                          <div className="absolute top-2 left-2 bg-orange-500 text-black text-[8px] font-black font-mono px-1.5 py-0.5 rounded-sm uppercase tracking-widest">NEW</div>
+                          {/* NEW badge top-left, or episode badge if this is a TV episode */}
+                          {episodeLabel ? (
+                            <div className="absolute top-2 left-2 flex items-center gap-1 bg-orange-500 text-black text-[8px] font-black font-mono px-1.5 py-0.5 rounded-sm uppercase tracking-widest">
+                              <Tv size={8} className="flex-shrink-0" />
+                              {episodeLabel}
+                            </div>
+                          ) : (
+                            <div className="absolute top-2 left-2 bg-orange-500 text-black text-[8px] font-black font-mono px-1.5 py-0.5 rounded-sm uppercase tracking-widest">NEW</div>
+                          )}
                           {/* Rating top-right */}
                           {mov.rating > 0 && (
                             <div className="absolute top-2 right-2 bg-black/70 text-yellow-400 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-sm">★ {mov.rating}</div>
@@ -3224,7 +3278,9 @@ export default function App() {
                           {/* Hover overlay */}
                           <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-2">
                             <span className="text-white text-[10px] font-bold truncate">{mov.title}</span>
-                            <span className="text-zinc-400 text-[8px] font-mono">{mov.fileType} · {mov.fileSize}</span>
+                            <span className="text-zinc-400 text-[8px] font-mono">
+                              {episodeLabel ? `${episodeLabel} · ${mov.fileType} · ${mov.fileSize}` : `${mov.fileType} · ${mov.fileSize}`}
+                            </span>
                           </div>
                         </div>
                       </div>
