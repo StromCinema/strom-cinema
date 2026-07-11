@@ -102,7 +102,10 @@ async function discoverViaNsd(): Promise<string | null> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function ConnectionGate({ onConnected, targetPlatform }: ConnectionGateProps) {
-  const [tab, setTab] = useState<Tab>('link');
+  // Link Code is temporarily disabled (not working as intended yet) — default
+  // to Manual IP. The 'link' tab/state and all its logic are left in place
+  // so it can be re-enabled later; only entry into it is blocked below.
+  const [tab, setTab] = useState<Tab>('manual');
 
   // ── Manual tab state ──────────────────────────────────────────
   const [address, setAddress] = useState(() => localStorage.getItem('strom_server_address') || '');
@@ -154,21 +157,24 @@ export default function ConnectionGate({ onConnected, targetPlatform }: Connecti
       switch (e.key) {
         case 'ArrowUp':
           e.preventDefault();
-          setGateFocusIdx((prev) => Math.max(0, prev - 1));
+          // Floor at 1 (Manual IP tab), not 0 — the Link Code tab (idx 0) is
+          // disabled and can't receive real focus, so don't let D-pad nav
+          // land there.
+          setGateFocusIdx((prev) => Math.max(1, prev - 1));
           break;
         case 'ArrowDown':
           e.preventDefault();
           setGateFocusIdx((prev) => Math.min(tab === 'manual' ? 3 : 2, prev + 1));
           break;
         case 'ArrowLeft':
-          if (gateFocusIdx <= 1) { e.preventDefault(); setTab('link'); setGateFocusIdx(0); }
+          // Link Code tab temporarily disabled — see note by tab state above.
           break;
         case 'ArrowRight':
           if (gateFocusIdx <= 1) { e.preventDefault(); setTab('manual'); setGateFocusIdx(1); }
           break;
         case 'Enter':
           e.preventDefault();
-          if (gateFocusIdx === 0)      { setTab('link');   setGateFocusIdx(2); }
+          if (gateFocusIdx === 0) { /* Link Code disabled — ignore */ }
           else if (gateFocusIdx === 1) { setTab('manual'); setGateFocusIdx(2); }
           else if (gateFocusIdx === 2) {
             if (tab === 'link') requestLinkCode();
@@ -398,16 +404,16 @@ export default function ConnectionGate({ onConnected, targetPlatform }: Connecti
           <div className="flex border-b border-zinc-800/80">
             <button
               ref={tabLinkRef}
-              onClick={() => { setTab('link'); setGateFocusIdx(2); }}
+              onClick={() => { /* temporarily disabled — not working as intended yet */ }}
               onFocus={() => setGateFocusIdx(0)}
-              className={`flex-1 flex items-center justify-center gap-2 py-3.5 text-[11px] font-bold uppercase tracking-widest transition-all outline-none ${
-                tab === 'link'
-                  ? 'text-orange-400 border-b-2 border-orange-500 bg-orange-500/5'
-                  : 'text-zinc-500 hover:text-zinc-300'
-              } ${gateFocusIdx === 0 ? `ring-2 ring-inset ${glowClass}` : ''}`}
+              disabled
+              aria-disabled="true"
+              title="Link Code is temporarily disabled — use Manual IP for now"
+              className="flex-1 flex items-center justify-center gap-2 py-3.5 text-[11px] font-bold uppercase tracking-widest outline-none text-zinc-600 cursor-not-allowed opacity-50"
             >
               <Tv2 size={13} />
               Link Code
+              <span className="text-[8px] font-mono normal-case tracking-normal text-zinc-600">(soon)</span>
             </button>
             <button
               ref={tabManualRef}
