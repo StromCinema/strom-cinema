@@ -311,11 +311,71 @@ function handleStream(req, res, sendBody) {
 }
 
 const { spawn, execFile } = require('child_process');
+const net = require('net');
 
 const MPV_PATH = path.join(__dirname, 'mpv.exe');
 const FFPROBE_PATH = 'C:\\ffmpeg\\bin\\ffprobe.exe';
+const MPV_IPC_PATH = '\\\\.\\pipe\\strom-mpv';
 
 let mpvProcess = null;
+
+// ─── MPV IPC — position tracking for Resume ────────────────────────────────
+// mpv runs detached on the server. The only way the frontend can know "where
+// did the user leave off" is if we ask mpv ourselves over its JSON IPC pipe
+// and hand that off via /api/play/status. mpvState is intentionally global —
+// only one mpv instance ever runs at a time (see kill-previous logic below).
+let mpvIpc = null;
+let mpvIpcBuffer = '';
+let mpvPollTimer = null;
+let mpvState = {
+  filePath: null,
+  movieId: null,
+  position: 0,
+  duration: 0,
+  playing: false,
+  endedAt: null,
+};
+
+function connectMpvIpc(retriesLeft = 20) {
+  const sock = net.connect(MPV_IPC_PATH);
+
+  sock.on('connect', () => {
+    mpvIpc = sock;
+    mpvIpcBuffer = '';
+    if (mpvPollTimer) clearInterval(mpvPollTimer);
+    mpvPollTimer = setInterval(() => {
+      if (!mpvIpc) return;
+      try {
+        mpvIpc.write(JSON.stringify({ command: ['get_property', 'time-pos'], request_id: 1 }) + '\n');
+        mpvIpc.write(JSON.stringify({ command: ['get_property', 'duration'], request_id: 2 }) + '\n');
+      } catch {}
+    }, 2000);
+  });
+
+  sock.on('data', (chunk) => {
+    mpvIpcBuffer += chunk.toString();
+    const lines = mpvIpcBuffer.split('\n');
+    mpvIpcBuffer = lines.pop(); // keep trailing partial line for next chunk
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const msg = JSON.parse(line);
+        if (msg.request_id === 1 && typeof msg.data === 'number') mpvState.position = msg.data;
+        if (msg.request_id === 2 && typeof msg.data === 'number') mpvState.duration = msg.data;
+      } catch {}
+    }
+  });
+
+  sock.on('error', () => {
+    // Pipe isn't up yet right after spawn — mpv needs a moment to create it.
+    if (retriesLeft > 0) setTimeout(() => connectMpvIpc(retriesLeft - 1), 250);
+  });
+
+  sock.on('close', () => {
+    mpvIpc = null;
+    if (mpvPollTimer) { clearInterval(mpvPollTimer); mpvPollTimer = null; }
+  });
+}
 
 // ─── MEDIA TRACKS ─────────────────────────────────────────────────────────────
 app.get('/api/media/tracks', (req, res) => {
@@ -446,7 +506,7 @@ app.get('/api/media/tracks', (req, res) => {
 
 // ─── MPV PLAYBACK ─────────────────────────────────────────────────────────────
 app.post('/api/play/local', (req, res) => {
-  const { filePath, startTime, audioTrack, subtitleTrack } = req.body;
+  const { filePath, startTime, audioTrack, subtitleTrack, movieId } = req.body;
 
   if (!filePath) {
     return res.status(400).json({ error: 'filePath is required' });
@@ -470,6 +530,7 @@ app.post('/api/play/local', (req, res) => {
     '--fullscreen',
     '--save-position-on-quit',
     `--start=${startTime || 0}`,
+    `--input-ipc-server=${MPV_IPC_PATH}`,
   ];
 
   if (audioTrack != null) args.push(`--aid=${audioTrack}`);
@@ -486,14 +547,30 @@ app.post('/api/play/local', (req, res) => {
       stdio: 'ignore',
     });
 
+    mpvState = {
+      filePath,
+      movieId: movieId || null,
+      position: startTime || 0,
+      duration: 0,
+      playing: true,
+      endedAt: null,
+    };
+    connectMpvIpc();
+
     mpvProcess.on('exit', (code) => {
       console.log(`[Plexus] MPV exited with code ${code}`);
       mpvProcess = null;
+      mpvState.playing = false;
+      mpvState.endedAt = Date.now();
+      if (mpvIpc) { try { mpvIpc.destroy(); } catch {} mpvIpc = null; }
+      if (mpvPollTimer) { clearInterval(mpvPollTimer); mpvPollTimer = null; }
     });
 
     mpvProcess.on('error', (err) => {
       console.error('[Plexus] MPV spawn error:', err.message);
       mpvProcess = null;
+      mpvState.playing = false;
+      mpvState.endedAt = Date.now();
     });
 
     res.json({ ok: true, pid: mpvProcess.pid });
@@ -501,6 +578,12 @@ app.post('/api/play/local', (req, res) => {
     console.error('[Plexus] Failed to spawn MPV:', err.message);
     res.status(500).json({ error: err.message });
   }
+});
+
+// Polled by the frontend to detect when mpv closes and what position it was
+// at, so a PlaybackSession can be saved/updated for Resume.
+app.get('/api/play/status', (req, res) => {
+  res.json(mpvState);
 });
 
 app.post('/api/play/stop', (req, res) => {
@@ -844,8 +927,84 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
+// ─── mDNS ADVERTISEMENT (LAN auto-discovery) ─────────────────────────────────
+// Advertises this server as `_strom._tcp.local` on the LAN so the Android TV
+// app can find it via NsdManager without knowing the subnet/IP range ahead of
+// time. This is the primary discovery path — the TCP subnet scan in
+// ConnectionGate.tsx only runs as a fallback if mDNS is unavailable/blocked
+// (e.g. a router with multicast disabled).
+const { Bonjour } = require('bonjour-service');
+const bonjour = new Bonjour();
+
+const mdnsService = bonjour.publish({
+  name: `Strøm-${os.hostname()}`,
+  type: 'strom', // resolves on the network as _strom._tcp.local
+  port: PORT,
+});
+console.log(`[Plexus] mDNS advertising as "Strøm-${os.hostname()}" (_strom._tcp, port ${PORT})`);
+
+// Unpublish cleanly on shutdown so stale entries don't linger in other
+// devices' mDNS caches after this process exits.
+function shutdownMdns() {
+  bonjour.unpublishAll(() => {
+    bonjour.destroy();
+    process.exit(0);
+  });
+}
+process.on('SIGINT', shutdownMdns);
+process.on('SIGTERM', shutdownMdns);
+
+// ─── STARTUP BANNER ───────────────────────────────────────────────────────────
+// Prints the LAN address in large "digital clock" style digits so it's easy
+// to read from across the room when typing it into a TV's Manual IP field —
+// a plain one-line log is easy to miss among all the other console output.
+const SEVEN_SEGMENT = {
+  '0': [' _ ', '| |', '|_|'],
+  '1': ['   ', '  |', '  |'],
+  '2': [' _ ', ' _|', '|_ '],
+  '3': [' _ ', ' _|', ' _|'],
+  '4': ['   ', '|_|', '  |'],
+  '5': [' _ ', '|_ ', ' _|'],
+  '6': [' _ ', '|_ ', '|_|'],
+  '7': [' _ ', '  |', '  |'],
+  '8': [' _ ', '|_|', '|_|'],
+  '9': [' _ ', '|_|', ' _|'],
+  '.': ['   ', '   ', ' o '],
+  ':': ['   ', ' o ', ' o '],
+};
+
+function renderBigText(text) {
+  const rows = ['', '', ''];
+  for (const ch of text) {
+    const glyph = SEVEN_SEGMENT[ch] || ['   ', '   ', '   '];
+    for (let r = 0; r < 3; r++) rows[r] += glyph[r] + ' ';
+  }
+  return rows;
+}
+
+function printServerBanner() {
+  const address = `${getLocalIP()}:${PORT}`;
+  const bigRows = renderBigText(address);
+  const footer = "Enter this on your TV's Manual IP tab";
+  const contentWidth = Math.max('SERVER ADDRESS'.length, footer.length, ...bigRows.map((r) => r.length)) + 2;
+
+  const line = '='.repeat(contentWidth + 2);
+  console.log('');
+  console.log(`+${line}+`);
+  console.log(`|  ${'SERVER ADDRESS'.padEnd(contentWidth)}|`);
+  console.log(`|${' '.repeat(contentWidth + 2)}|`);
+  for (const row of bigRows) {
+    console.log(`|  ${row.padEnd(contentWidth)}|`);
+  }
+  console.log(`|${' '.repeat(contentWidth + 2)}|`);
+  console.log(`|  ${footer.padEnd(contentWidth)}|`);
+  console.log(`+${line}+`);
+  console.log('');
+}
+
 // ─── START ────────────────────────────────────────────────────────────────────
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`[Plexus Windows Server Service] Active on port ${PORT}`);
   console.log(`[Plexus] Setup page available at: http://localhost:${PORT}/setup`);
+  printServerBanner();
 });
