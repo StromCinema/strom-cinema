@@ -34,6 +34,22 @@ export interface EpisodeGroup {
   episodes: ParsedEpisode[];
 }
 
+/**
+ * Produce a compact id from the complete path. The previous implementation
+ * truncated base64 to 16 characters, so episodes beneath the same root (for
+ * example C:\Dump\Special.Ops.Lioness\...) frequently received identical
+ * ids. Those collisions made React and playback history treat different
+ * episodes as if they were the same item.
+ */
+function episodeIdFromPath(filePath: string): string {
+  let hash = 2166136261;
+  for (let i = 0; i < filePath.length; i += 1) {
+    hash ^= filePath.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `episode-${(hash >>> 0).toString(16).padStart(8, '0')}`;
+}
+
 // ─── Regex patterns ─────────────────────────────────────────────────────────
 
 /** S01E01, S1E1, S01E01E02 */
@@ -174,7 +190,7 @@ export function groupEpisodes(filePaths: string[]): Map<string, EpisodeGroup> {
     const title = deriveEpisodeTitle(filename, rawShowName);
 
     const parsedEp: ParsedEpisode = {
-      id: btoa(filePath).replace(/[^a-zA-Z0-9]/g, '').slice(0, 16),
+      id: episodeIdFromPath(filePath),
       title,
       season,
       episode,
@@ -211,8 +227,13 @@ export function parseEpisodesFromMovie(
 
   if (groups.size === 0) return [];
 
-  // Return the first (and usually only) group's episodes
-  return groups.values().next().value?.episodes ?? [];
+  // All paths supplied here belong to the same Movie card. Release folders
+  // may use different names for the same show (for example "Lioness" and
+  // "Special Ops Lioness"), which creates more than one filename-derived
+  // group. Merge them back into one sorted episode list for the card.
+  return [...groups.values()]
+    .flatMap(group => group.episodes)
+    .sort((a, b) => episodeSortKey(a) - episodeSortKey(b));
 }
 
 // ─── Episode count helpers ─────────────────────────────────────────────────
@@ -266,7 +287,10 @@ export function groupMoviesByShow<T extends { localFilePath?: string; title?: st
       continue;
     }
 
-    const rawShow = extractShowName(filePath);
+    // Prefer the metadata title because release names for the same show can
+    // vary between seasons/sources ("Lioness" vs "Special Ops Lioness").
+    // The filename-derived name remains the fallback before enrichment.
+    const rawShow = movie.title?.trim() || extractShowName(filePath);
     const key = normaliseShowName(rawShow);
 
     if (showIndex.has(key)) {

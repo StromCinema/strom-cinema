@@ -147,8 +147,8 @@ export default function SettingsPanel({
             <Zap size={18} />
           </div>
           <div className="flex-1">
-            <h2 className="text-base font-bold text-zinc-100">TrackerFlix Host</h2>
-            <p className="text-xs text-zinc-500">Local URL where your TrackerFlix instance is running. Leave as default if running on this machine.</p>
+            <h2 className="text-base font-bold text-zinc-100">Companion-App Host</h2>
+            <p className="text-xs text-zinc-500">Local URL where your Companion-app instance is running. Leave as default if running on this machine.</p>
           </div>
           {/* Status badge */}
           <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border ${
@@ -171,7 +171,7 @@ export default function SettingsPanel({
         {/* URL input */}
         <div className="space-y-1.5">
           <label className="font-mono text-[10px] font-bold uppercase tracking-widest text-zinc-500">
-            TrackerFlix Base URL
+            Companion-app Base URL
           </label>
           <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border bg-zinc-900 transition-all ${
             isFocused('trackerflix-host-input')

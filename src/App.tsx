@@ -20,7 +20,7 @@ import ConnectionGate from './components/ConnectionGate';
 import EpisodeSelectModal from './components/EpisodeSelectModal';
 import TrackPickerModal from './components/TrackPickerModal';
 import QualityPickerModal from './components/QualityPickerModal';
-import { parseEpisodesFromMovie, groupMoviesByShow, ParsedEpisode } from './lib/episodeUtils';
+import { parseEpisodesFromMovie, groupMoviesByShow, formatEpisodeBadge, ParsedEpisode } from './lib/episodeUtils';
 
 // Windows paths returned across different scans/caches can differ in slash
 // direction (\ vs /) and drive-letter or segment casing even when they point
@@ -44,6 +44,16 @@ const getEpisodeLabel = (movie?: { tagline?: string } | null): string | null => 
   const match = /^S\d{1,2}E\d{1,3}/i.exec(movie?.tagline || '');
   return match ? match[0].toUpperCase() : null;
 };
+
+// Recently Added is a shelf of titles, not raw files. Sort the complete scan
+// newest-first before grouping so the representative TV card uses the newest
+// episode's artwork/metadata, while episodePaths still contains every episode
+// available for the show. Apply the 10-card limit only after grouping; doing
+// it before grouping allowed one 10+ episode season to fill the entire shelf.
+const getRecentlyAddedItems = (movies: Movie[], limit = 10): Movie[] =>
+  groupMoviesByShow(
+    [...movies].sort((a, b) => (b.addedAt ?? 0) - (a.addedAt ?? 0))
+  ).slice(0, limit);
 
 // Host strings coming out of the ConnectionGate pairing/subnet-scan flow
 // aren't guaranteed to be bare "host:port" — on at least one machine the
@@ -577,8 +587,7 @@ export default function App() {
       if (lib.plexus_companion_movies && lib.plexus_companion_movies.length > 0) {
         const parsed: Movie[] = lib.plexus_companion_movies;
         setCompanionScannedMovies(parsed);
-        const sorted = [...parsed].sort((a, b) => (b.addedAt ?? 0) - (a.addedAt ?? 0)).slice(0, 10);
-        setRecentlyAdded(sorted);
+        setRecentlyAdded(getRecentlyAddedItems(parsed));
         if (parsed.length > 0) setCurrentHeroMovie(parsed[0]);
       }
 
@@ -660,8 +669,7 @@ export default function App() {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ plexus_companion_movies: results })
             }).catch(() => {});
-            const sortedNew = [...results].sort((a, b) => (b.addedAt ?? 0) - (a.addedAt ?? 0)).slice(0, 10);
-            setRecentlyAdded(sortedNew);
+            setRecentlyAdded(getRecentlyAddedItems(results));
             if (results.length > 0) setCurrentHeroMovie(results[0]);
           } catch (err) {
             console.warn('[Plexus] Boot background rescan failed:', err);
@@ -799,6 +807,10 @@ export default function App() {
           audioTrack: audioTrack ?? null,
           subtitleTrack: subtitleTrack ?? null,
           movieId: movie.id,
+          // Give the custom Windows MPV overlay the same title information
+          // shown by the native Android ExoPlayer controls.
+          title: movie.title,
+          episodeLabel: getEpisodeLabel(movie) ?? '',
         }),
       });
       const data = await res.json();
@@ -886,10 +898,17 @@ export default function App() {
   // to movieId for items with no path (tracker/streaming entries).
   const findSessionForMovie = useCallback((movie: Movie | null | undefined): PlaybackSession | undefined => {
     if (!movie) return undefined;
-    const path = movie.localFilePath || movie.sourcePath || '';
-    if (path) {
-      const normPath = normalizePath(path);
-      const byPath = playbackSessions.find(s => s.localFilePath && normalizePath(s.localFilePath) === normPath);
+    // A TV-show card can represent many episode files. Match the saved
+    // session against every path attached to the card, not only the first
+    // episode chosen as the visual representative by groupMoviesByShow().
+    const moviePaths = [
+      movie.localFilePath,
+      ...(((movie as any).episodePaths ?? []) as string[]),
+    ].filter(Boolean).map(path => normalizePath(path));
+    if (moviePaths.length > 0) {
+      const byPath = playbackSessions.find(s =>
+        !!s.localFilePath && moviePaths.includes(normalizePath(s.localFilePath))
+      );
       if (byPath) return byPath;
     }
     return playbackSessions.find(s => s.movieId === movie.id);
@@ -1539,8 +1558,7 @@ export default function App() {
           const enriched = await enrichWithMetadata(data.movies);
           setCompanionScannedMovies(enriched);
           saveLibrary({ plexus_companion_movies: enriched });
-          const sorted = [...enriched].sort((a, b) => (b.addedAt ?? 0) - (a.addedAt ?? 0)).slice(0, 10);
-          setRecentlyAdded(sorted);
+          setRecentlyAdded(getRecentlyAddedItems(enriched));
           if (enriched.length > 0) setCurrentHeroMovie(enriched[0]);
         }
       }
@@ -1671,8 +1689,7 @@ export default function App() {
                 })();
                 setCompanionScannedMovies(enriched);
                 saveLibrary({ plexus_companion_movies: enriched });
-                const sorted = [...enriched].sort((a, b) => (b.addedAt ?? 0) - (a.addedAt ?? 0)).slice(0, 10);
-                setRecentlyAdded(sorted);
+                setRecentlyAdded(getRecentlyAddedItems(enriched));
               }
             }
           } else {
@@ -1774,8 +1791,7 @@ export default function App() {
     setCompanionScannedMovies(enriched);
     saveLibrary({ plexus_companion_movies: enriched });
 
-    const sorted = [...enriched].sort((a, b) => (b.addedAt ?? 0) - (a.addedAt ?? 0)).slice(0, 10);
-    setRecentlyAdded(sorted);
+    setRecentlyAdded(getRecentlyAddedItems(enriched));
 
     // Update fileCount and scannedAt on each path
     const updatedPaths = libraryPaths.map(lp => ({
@@ -3172,8 +3188,8 @@ export default function App() {
 
                     return (
                       <div
-                        key={session.movieId}
-                        id={`continue-card-${session.movieId}`}
+                        key={`${session.movieId}-${normalizePath(session.localFilePath)}`}
+                        id={`continue-card-${index}`}
                         data-dpad-focused={isCardFocused ? 'true' : undefined}
                         onClick={() => {
                           if (!matched) return;
@@ -3237,13 +3253,19 @@ export default function App() {
                     Recently Added
                   </span>
                   <div className="ml-4 h-[1px] flex-1 bg-gradient-to-r from-white/10 to-transparent"></div>
-                  <span className="text-[10px] text-zinc-500 font-mono tracking-widest lowercase ml-3">latest {recentlyAdded.length} files</span>
+                  <span className="text-[10px] text-zinc-500 font-mono tracking-widest lowercase ml-3">latest {recentlyAdded.length} titles</span>
                 </h2>
 
                 <div id="recently-added-scroller" className="flex gap-[1.2vw] overflow-x-auto overflow-y-visible px-4 py-8 -mx-4 -my-8 scrollbar-thin scrollbar-thumb-zinc-900 select-none">
                   {recentlyAdded.map((mov, index) => {
                     const isCardFocused = isTvMode && focusRow === (playbackSessions.length > 0 ? 3 : 2) && focusCol === index;
-                    const episodeLabel = getEpisodeLabel(mov);
+                    const recentEpisodes = parseEpisodesFromMovie(
+                      mov.localFilePath ?? '',
+                      (mov as any).episodePaths ?? []
+                    );
+                    const episodeLabel = recentEpisodes.length > 1
+                      ? formatEpisodeBadge(recentEpisodes)
+                      : getEpisodeLabel(mov);
 
                     return (
                       <div
@@ -3532,9 +3554,14 @@ export default function App() {
           movie={selectedMovie}
           prefetchedTracks={prefetchedTracks[selectedMovie.id] || null}
           playbackSession={findSessionForMovie(selectedMovie) || null}
+          resumeMovie={findLibraryMovieForSession(findSessionForMovie(selectedMovie)) || null}
           onMovieUpdate={handleMovieUpdate}
           onPlayClick={(m, startTime, audioTrack, subtitleTrack) => {
-            setSelectedMovie(null);
+            // PlayerActivity is a separate native Android screen. Keep the
+            // details card mounted underneath it so Back returns to the same
+            // title instead of dropping the user on the home page.
+            const keepDetailsOpen = Capacitor.isNativePlatform() && m.isLocal && !!(m.localFilePath || m.sourcePath);
+            if (!keepDetailsOpen) setSelectedMovie(null);
             if (m.isTrackerItem && m.trackerReleases && m.trackerReleases.length > 0) {
               // Has quality options — show picker → SSE → MPV
               setQualityPickerMovie(m);
@@ -3579,7 +3606,6 @@ export default function App() {
             }
           }}
           onPlayEpisode={(episode: ParsedEpisode, show: Movie) => {
-            setSelectedMovie(null);
             const epLabel = episode.season > 0
               ? `S${episode.season} E${episode.episode}`
               : `E${episode.episode}`;
@@ -3587,8 +3613,10 @@ export default function App() {
             const epMovie = { ...show, localFilePath: episode.filePath, title: epTitle, id: episode.id ?? show.id };
             const session = findSessionForMovie(epMovie);
             if (Capacitor.isNativePlatform()) {
+              // Keep the show details card open behind PlayerActivity.
               playNative(epMovie, session?.currentTime ?? 0);
             } else {
+              setSelectedMovie(null);
               playWithMPV(epMovie, session?.currentTime ?? 0);
             }
           }}

@@ -9,6 +9,7 @@ interface MovieDetailsModalProps {
   movie: Movie;
   prefetchedTracks: TrackInfo | null;
   playbackSession: PlaybackSession | null;
+  resumeMovie?: Movie | null;
   onPlayClick: (movie: Movie, startTime: number, audioTrack: number | null, subtitleTrack: number | null) => void;
   onPlayEpisode?: (episode: ParsedEpisode, show: Movie) => void;
   onClose: () => void;
@@ -39,6 +40,7 @@ export default function MovieDetailsModal({
   movie,
   prefetchedTracks,
   playbackSession,
+  resumeMovie,
   onPlayClick,
   onPlayEpisode,
   onClose,
@@ -301,7 +303,7 @@ export default function MovieDetailsModal({
           e.preventDefault(); e.stopPropagation();
           setModalFocusIdx(prev => {
             if (prev === 0) onPlayClick(movie, 0, selectedAudio, null);
-            else if (hasResume && prev === 1) onPlayClick(movie, playbackSession!.currentTime, selectedAudio, null);
+            else if (hasResume && prev === 1) onPlayClick(resumeMovie ?? movie, playbackSession!.currentTime, selectedAudio, null);
             else if (prev === trailerIdx) handleTrailerClick();
             else if (audioIdx !== -1 && prev === audioIdx) {
               setShowAudioPicker(p => !p); setPickerFocusIdx(0);
@@ -317,7 +319,7 @@ export default function MovieDetailsModal({
     };
     window.addEventListener('keydown', handler, true);
     return () => window.removeEventListener('keydown', handler, true);
-  }, [onClose, onPlayClick, enrichedMovie, modalFocusIdx, isPlayingTrailer, totalFocusItems, episodes, isMultiEpisode, onPlayEpisode, hasResume, playbackSession, selectedAudio, trailerIdx, audioIdx, episodesBtnIdx, closeIdx, showAudioPicker, pickerFocusIdx, localTracks, showEpisodeSheet, sheetFocusIdx]);
+  }, [onClose, onPlayClick, enrichedMovie, modalFocusIdx, isPlayingTrailer, totalFocusItems, episodes, isMultiEpisode, onPlayEpisode, hasResume, playbackSession, resumeMovie, selectedAudio, trailerIdx, audioIdx, episodesBtnIdx, closeIdx, showAudioPicker, pickerFocusIdx, localTracks, showEpisodeSheet, sheetFocusIdx]);
 
   const backdrop = enrichedMovie.backdropPath || enrichedMovie.posterPath;
   const year = enrichedMovie.releaseDate?.split('-')[0];
@@ -530,7 +532,7 @@ export default function MovieDetailsModal({
                 {/* Resume — only shown when a session exists beyond 30s */}
                 {hasResume && (
                   <button
-                    onClick={() => onPlayClick(movie, playbackSession!.currentTime, selectedAudio, null)}
+                    onClick={() => onPlayClick(resumeMovie ?? movie, playbackSession!.currentTime, selectedAudio, null)}
                     className={`flex items-center gap-2.5 px-6 py-3.5 rounded-xl font-bold text-sm uppercase tracking-widest transition-all cursor-pointer active:scale-95 border backdrop-blur-sm bg-white/10 border-white/15 text-white hover:bg-white/15 ${
                       modalFocusIdx === 1 ? 'ring-4 ring-orange-500 ring-offset-2 ring-offset-black/50 scale-105' : ''
                     }`}
