@@ -314,6 +314,8 @@ const { spawn, execFile } = require('child_process');
 const net = require('net');
 
 const MPV_PATH = path.join(__dirname, 'mpv.exe');
+const MPV_CONFIG_DIR = path.join(__dirname, 'portable_config');
+const STROM_OSC_SCRIPT = path.join(MPV_CONFIG_DIR, 'scripts', 'strom-osc.lua');
 const FFPROBE_PATH = 'C:\\ffmpeg\\bin\\ffprobe.exe';
 const MPV_IPC_PATH = '\\\\.\\pipe\\strom-mpv';
 
@@ -506,7 +508,7 @@ app.get('/api/media/tracks', (req, res) => {
 
 // ─── MPV PLAYBACK ─────────────────────────────────────────────────────────────
 app.post('/api/play/local', (req, res) => {
-  const { filePath, startTime, audioTrack, subtitleTrack, movieId } = req.body;
+  const { filePath, startTime, audioTrack, subtitleTrack, movieId, title, episodeLabel } = req.body;
 
   if (!filePath) {
     return res.status(400).json({ error: 'filePath is required' });
@@ -527,6 +529,11 @@ app.post('/api/play/local', (req, res) => {
   }
 
   const args = [
+    `--config-dir=${MPV_CONFIG_DIR}`,
+    '--osc=no',
+    '--osd-bar=no',
+    '--load-scripts=no',
+    `--script=${STROM_OSC_SCRIPT}`,
     '--fullscreen',
     '--save-position-on-quit',
     `--start=${startTime || 0}`,
@@ -539,12 +546,27 @@ app.post('/api/play/local', (req, res) => {
 
   args.push(filePath);
 
+  // Keep UI metadata out of command-line script options (where commas and
+  // quotes in real titles are awkward to escape). The bundled Strøm OSC reads
+  // these two inherited environment variables instead.
+  const stromTitle = typeof title === 'string' && title.trim()
+    ? title.trim().slice(0, 300)
+    : path.parse(isUrl ? new URL(filePath).pathname : filePath).name;
+  const stromEpisodeLabel = typeof episodeLabel === 'string'
+    ? episodeLabel.trim().slice(0, 80)
+    : '';
+
   console.log(`[Plexus] Launching MPV: ${MPV_PATH} ${args.join(' ')}`);
 
   try {
     mpvProcess = spawn(MPV_PATH, args, {
       detached: false,
       stdio: 'ignore',
+      env: {
+        ...process.env,
+        STROM_MEDIA_TITLE: stromTitle,
+        STROM_EPISODE_LABEL: stromEpisodeLabel,
+      },
     });
 
     mpvState = {
