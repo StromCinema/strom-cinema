@@ -1,4 +1,5 @@
 Changelog: 
+
 2026-08-28 NEW Android TV-app Fixed the Back button behaviour. After opening a movie or episode, Back should return to the previous media/card page instead of jumping directly to the home screen.
 Preserved Android TV’s ExoPlayer direct playback, with no transcoding. The Resume and Recently Added rows remain D-pad navigable.
 
