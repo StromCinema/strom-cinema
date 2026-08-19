@@ -1,4 +1,21 @@
 Changelog: 
+2026-08-28 NEW Android TV-app Fixed the Back button behaviour. After opening a movie or episode, Back should return to the previous media/card page instead of jumping directly to the home screen.
+Preserved Android TV’s ExoPlayer direct playback, with no transcoding. The Resume and Recently Added rows remain D-pad navigable.
+
+Misc, Worked on improving Recently Added for TV content.Episode filenames and episode numbers can be detected and displayed. Requested improvement: group newly added episodes under their series/season, instead of showing every episode as a separate top-level item.
+
+New custom mpv interface
+Created a completely new Strøm Cinema playback interface for the Windows mpv player.Added a custom bottom control panel with:
+Play/pause
+Seek/progress bar
+Audio-track selection
+Subtitle selection
+CC OFF
+Automatic audio option
+Media/title information
+
+Added custom colours, hover states and larger on-screen information text.
+
 
 2026-07-11 NEW: TV episodes now show their `S00E00` label everywhere instead of just the show title:
 
@@ -42,6 +59,9 @@ Bugs are expected. If you find something broken or have ideas for improvement, p
 Installation guide @ https://stromcinema.github.io/
 ------------------------------------------------------------------------------------------------------
 ------------------------------------------------------------------------------------------------------
+
+<img width="783" height="460" alt="image" src="https://github.com/user-attachments/assets/82be347e-a2e2-4b21-b76b-7b6c35e0bcee" />
+
 
 <img width="732" height="291" alt="image" src="https://github.com/user-attachments/assets/4a3150ee-9923-427d-99f4-5f78b56a060f" />
 
