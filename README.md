@@ -69,7 +69,8 @@ Installation guide @ https://stromcinema.github.io/
 
 <img width="878" height="565" alt="image" src="https://github.com/user-attachments/assets/6544bcbd-cd46-4daa-ab74-150c105349bf" />
 
-<img width="547" height="378" alt="image" src="https://github.com/user-attachments/assets/01c0acf0-2657-4405-b18d-f227ca67e22e" />
+<img width="1253" height="616" alt="image" src="https://github.com/user-attachments/assets/dfa29b39-f491-4900-8ce5-ffc1a1c667e5" />
+
 
 
 <img width="2242" height="1240" alt="Screenshot 2026-06-18 223712" src="https://github.com/user-attachments/assets/2e3d9344-75f8-4f80-b9f0-cc3ca35506d3" />
